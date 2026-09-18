@@ -89,14 +89,9 @@ class DevinClient:
         if not settings.devin_api_key or not settings.devin_org_id:
             raise RuntimeError("DEVIN_API_KEY and DEVIN_ORG_ID are required for live Devin mode")
         self.org = settings.devin_org_id
-        self._client = client or httpx.Client(
-            base_url=settings.devin_api_url,
-            headers={
-                "Authorization": f"Bearer {settings.devin_api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=60.0,
-        )
+        self._client = client or httpx.Client(base_url=settings.devin_api_url, timeout=60.0)
+        self._client.headers["Authorization"] = f"Bearer {settings.devin_api_key}"
+        self._client.headers["Content-Type"] = "application/json"
 
     def _base(self) -> str:
         return f"/v3/organizations/{self.org}/sessions"
