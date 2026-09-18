@@ -1,0 +1,13 @@
+diff --git a/superset/utils/core.py b/superset/utils/core.py
+index 63c8ccc..2435b1b 100644
+--- a/superset/utils/core.py
++++ b/superset/utils/core.py
+@@ -2127,6 +2127,8 @@ def normalize_dttm_col(
+     for _col in dttm_cols:
+         if _col.col_label not in df.columns:
+             continue
++        if len(df) < 2:
++            continue
+ 
+         # Use format from format_map if available and not already set
+         if format_map and _col.col_label in format_map and not _col.timestamp_format:

@@ -1,0 +1,40 @@
+id: superset-normalize-dttm-edge-cases
+title: "test_edge_cases is false-green: it never checks that normalize_dttm_col converted anything"
+repo: dheeraj5612/superset
+source_sha: 2e1cf8a72c46f888b8f2c046ccce2e9e21156ee8
+test_file: tests/unit_tests/utils/test_date_parsing.py
+test_node_id: tests/unit_tests/utils/test_date_parsing.py::test_edge_cases
+weakness_kind: no_assertion
+weakness_description: |
+  `test_edge_cases` calls `normalize_dttm_col` on four edge-case DataFrames (empty,
+  all-null, single value, already-datetime) and contains no assertion at all. The only
+  way it can fail is if `normalize_dttm_col` raises, so any regression that makes the
+  function silently return without converting the column (or that returns wrong values)
+  keeps this test green.
+protected_behavior: |
+  For every edge-case frame, `normalize_dttm_col(df, (DateColumn(col_label="date"),))`
+  must leave `df["date"]` as a datetime64 column in place (the function mutates `df`).
+  In particular a single string value such as "2023-01-01" must be parsed to
+  `pd.Timestamp("2023-01-01")`, an all-null column must become NaT datetimes, an empty
+  column must become an empty datetime column, and an already-datetime column must be
+  unchanged. No other test in the file exercises frames with fewer than two rows, so
+  this test is the only guard for the small-frame paths.
+test_command:
+  - "{python}"
+  - "-m"
+  - "pytest"
+  - "{test_file}"
+  - "-q"
+  - "-p"
+  - "no:cacheprovider"
+  - "--junitxml={junit}"
+allowed_paths:
+  - tests/unit_tests/utils/test_date_parsing.py
+mutant:
+  path: mutant.patch
+  description: |
+    Controlled regression in `superset/utils/core.py::normalize_dttm_col`: frames with
+    fewer than two rows are skipped (`if len(df) < 2: continue`), so the "single value"
+    edge case is never converted and stays a plain string column. The original
+    `test_edge_cases` (and every other test in the file) still passes with this
+    regression applied.

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.id }}{% endblock %}
+{% block content %}
+<h2>Job <code>{{ job.id }}</code> <span class="badge {{ job.state }}">{{ job.state }}</span></h2>
+<table>
+<tr><th>finding</th><td><a href="/findings/{{ finding.id }}">{{ finding.id }}</a> — <code>{{ finding.test_node_id }}</code></td></tr>
+<tr><th>issue</th><td>{% if finding.github_issue_url %}<a href="{{ finding.github_issue_url }}">#{{ job.issue_number }}</a>{% else %}#{{ job.issue_number }}{% endif %}</td></tr>
+<tr><th>Devin session</th><td>{% if job.devin_session_url %}<a href="{{ job.devin_session_url }}">{{ job.devin_session_id }}</a>{% else %}–{% endif %}</td></tr>
+<tr><th>candidate PR</th><td>{% if job.pr_url %}<a href="{{ job.pr_url }}">{{ job.pr_url }}</a> @ <code>{{ job.pr_head_sha }}</code>{% else %}–{% endif %}</td></tr>
+<tr><th>attempt</th><td>{{ job.attempt }}</td></tr>
+<tr><th>outcome</th><td>{{ job.outcome_reason or '–' }}</td></tr>
+<tr><th>errors</th><td>{{ job.error_count }} {% if job.last_error %}<span class="muted">{{ job.last_error }}</span>{% endif %}</td></tr>
+<tr><th>timeline</th><td class="muted">created {{ job.created_at }} · session {{ job.session_created_at or '–' }} · PR {{ job.pr_ready_at or '–' }} · finished {{ job.finished_at or '–' }}</td></tr>
+</table>
+
+<h2>Independent validation runs</h2>
+{% for v in job.validations %}
+<table>
+<tr><th colspan="2">attempt {{ v.attempt }} — <span class="badge {{ v.verdict }}">{{ v.verdict }}</span> {{ v.reason }}</th></tr>
+<tr><th>PR head</th><td><code>{{ v.pr_head_sha }}</code></td></tr>
+<tr><th>mutant sha256</th><td><code>{{ v.mutant_sha256 }}</code></td></tr>
+<tr><th>scope limited to test paths</th><td class="{{ 'ok' if v.scope_ok else 'bad' }}">{{ v.scope_ok }}</td></tr>
+<tr><th>target test present</th><td class="{{ 'ok' if v.target_test_present else 'bad' }}">{{ v.target_test_present }}</td></tr>
+<tr><th>repaired test on clean code</th><td class="{{ 'ok' if v.clean_passed else 'bad' }}">{{ v.clean_passed }}
+  {% if v.evidence.clean_repaired %}<span class="muted">(exit {{ v.evidence.clean_repaired.exit_code }}, {{ v.evidence.clean_repaired.passed }} passed, {{ v.evidence.clean_repaired.failed }} failed)</span>{% endif %}</td></tr>
+<tr><th>pre-registered regression detected</th><td class="{{ 'ok' if v.mutant_detected else 'bad' }}">{{ v.mutant_detected }}
+  {% if v.evidence.mutant_repaired %}<span class="muted">(exit {{ v.evidence.mutant_repaired.exit_code }}, {{ v.evidence.mutant_repaired.passed }} passed, {{ v.evidence.mutant_repaired.failed }} failed; target: {{ v.evidence.target_status_mutant }})</span>{% endif %}</td></tr>
+<tr><th>changed files</th><td>{% for p in v.evidence.changed_files or [] %}<code>{{ p }}</code> {% endfor %}</td></tr>
+<tr><th>artifacts</th><td><code>{{ v.artifacts_dir }}</code></td></tr>
+<tr><th>evidence</th><td><pre>{{ v.evidence | tojson_pretty }}</pre></td></tr>
+</table>
+{% else %}<p class="muted">No validation yet.</p>{% endfor %}
+
+<h2>Event log</h2>
+<table>
+<tr><th>at</th><th>transition</th><th>message</th></tr>
+{% for e in job.events %}
+<tr><td class="muted">{{ e.at.strftime('%H:%M:%S') }}</td><td><code>{{ e.from or '∅' }} → {{ e.to }}</code></td><td>{{ e.message }}</td></tr>
+{% endfor %}
+</table>
+{% endblock %}
