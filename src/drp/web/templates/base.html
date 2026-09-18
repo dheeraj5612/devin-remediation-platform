@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Devin Remediation Platform{% endblock %}</title>
+<style>
+  body { font: 14px/1.45 -apple-system, Segoe UI, Helvetica, Arial, sans-serif; margin: 0; color: #1f2328; background: #f6f8fa; }
+  header { background: #24292f; color: #fff; padding: 12px 24px; display: flex; gap: 24px; align-items: baseline; }
+  header a { color: #fff; text-decoration: none; }
+  main { padding: 20px 24px; max-width: 1300px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0; } h2 { font-size: 16px; margin: 24px 0 8px; }
+  table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #d8dee4; vertical-align: top; }
+  th { background: #f6f8fa; font-weight: 600; }
+  code, pre { font: 12px/1.4 SFMono-Regular, Consolas, Menlo, monospace; }
+  pre { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 10px; overflow: auto; max-height: 420px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 10px 12px; }
+  .card .v { font-size: 22px; font-weight: 600; } .card .k { color: #57606a; font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; color: #fff; background: #6e7781; }
+  .queued, .session_requested { background: #6e7781; } .session_running { background: #0969da; }
+  .pr_ready, .validating { background: #bf8700; } .verified, .confirmed { background: #1a7f37; }
+  .rejected, .refuted { background: #cf222e; } .escalated, .error, .infra_error { background: #8250df; }
+  .unregistered { background: #6e7781; }
+  .ok { color: #1a7f37; font-weight: 600; } .bad { color: #cf222e; font-weight: 600; }
+  .muted { color: #57606a; }
+</style>
+</head>
+<body>
+<header><h1><a href="/">Devin Remediation Platform</a></h1>
+  <a href="/api/jobs">jobs.json</a><a href="/api/metrics">metrics.json</a><a href="/metrics">/metrics</a></header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>
