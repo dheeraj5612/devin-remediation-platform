@@ -1,0 +1,90 @@
+{
+  "case_id": "schema-no-engine",
+  "baseline_sha": "5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e",
+  "fingerprint": "dd918919d9007b4241ccad5c562c09d11e8f3f0a049f22b3e16ee40d57b91e3c",
+  "confirmed": true,
+  "normal": {
+    "collected": [
+      "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine"
+    ],
+    "collection_errors": [],
+    "controls": {
+      "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine": true
+    },
+    "exit_code": 0,
+    "findings": [
+      {
+        "rule": "exception-only-assertion",
+        "test": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine"
+      }
+    ],
+    "phases": [
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine",
+        "outcome": "passed",
+        "when": "setup",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine",
+        "outcome": "passed",
+        "when": "call",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine",
+        "outcome": "passed",
+        "when": "teardown",
+        "xfail": false
+      }
+    ]
+  },
+  "mutant": {
+    "collected": [
+      "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine"
+    ],
+    "collection_errors": [],
+    "controls": {
+      "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine": true
+    },
+    "exit_code": 0,
+    "findings": [
+      {
+        "rule": "exception-only-assertion",
+        "test": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine"
+      }
+    ],
+    "phases": [
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine",
+        "outcome": "passed",
+        "when": "setup",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine",
+        "outcome": "passed",
+        "when": "call",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine",
+        "outcome": "passed",
+        "when": "teardown",
+        "xfail": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+- id: histogram-invalid
+  title: Histogram tests do not enforce rejection of invalid text
+  repository: apache/superset
+  baseline_sha: 5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e
+  issue_number: null
+  allowed_paths:
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py
+  affected_paths:
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py
+    - superset/utils/pandas_postprocessing/histogram.py
+  test_ids:
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values
+  contract: Invalid nonnumeric text must raise ValueError naming the selected column. Numeric strings such as '10' are accepted through numeric coercion and must retain correct histogram results.
+  challenge: histogram-swallow-invalid
+  acceptance: Normal designated tests pass without skips; the same active invalid-text regression that escaped the original tests is caught by an assertion or missing-ValueError failure.
+- id: schema-no-engine
+  title: Dynamic database parameters must require an engine
+  repository: apache/superset
+  baseline_sha: 5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e
+  issue_number: null
+  allowed_paths:
+    - tests/unit_tests/databases/schema_tests.py
+  affected_paths:
+    - tests/unit_tests/databases/schema_tests.py
+    - superset/databases/schemas.py
+  test_ids:
+    - tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine
+  contract: Loading dynamic-form database parameters without an engine must raise marshmallow.ValidationError with the missing-engine error. Fixtures must exercise the behavior claimed by the test.
+  challenge: schema-bypass-missing-engine
+  acceptance: Normal designated tests pass without skips; the same active missing-engine bypass that escaped the original test is caught by an assertion or missing-ValidationError failure.

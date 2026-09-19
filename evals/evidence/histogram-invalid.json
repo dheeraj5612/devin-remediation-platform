@@ -1,0 +1,150 @@
+{
+  "case_id": "histogram-invalid",
+  "baseline_sha": "5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e",
+  "fingerprint": "22d991749818aedcbab3f3223d5eeaa26c3b315c5423567148281e094dd6d5ce",
+  "confirmed": true,
+  "normal": {
+    "collected": [
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values"
+    ],
+    "collection_errors": [],
+    "controls": {
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column": true,
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values": true
+    },
+    "exit_code": 0,
+    "findings": [
+      {
+        "rule": "exception-only-assertion",
+        "test": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column"
+      },
+      {
+        "rule": "exception-only-assertion",
+        "test": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values"
+      }
+    ],
+    "phases": [
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+        "outcome": "passed",
+        "when": "setup",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+        "outcome": "passed",
+        "when": "call",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+        "outcome": "passed",
+        "when": "teardown",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values",
+        "outcome": "passed",
+        "when": "setup",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values",
+        "outcome": "passed",
+        "when": "call",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values",
+        "outcome": "passed",
+        "when": "teardown",
+        "xfail": false
+      }
+    ]
+  },
+  "mutant": {
+    "collected": [
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values"
+    ],
+    "collection_errors": [],
+    "controls": {
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column": true,
+      "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values": true
+    },
+    "exit_code": 0,
+    "findings": [
+      {
+        "rule": "exception-only-assertion",
+        "test": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column"
+      },
+      {
+        "rule": "exception-only-assertion",
+        "test": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values"
+      }
+    ],
+    "phases": [
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+        "outcome": "passed",
+        "when": "setup",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+        "outcome": "passed",
+        "when": "call",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column",
+        "outcome": "passed",
+        "when": "teardown",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values",
+        "outcome": "passed",
+        "when": "setup",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values",
+        "outcome": "passed",
+        "when": "call",
+        "xfail": false
+      },
+      {
+        "exception": "",
+        "failure": "",
+        "nodeid": "tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_some_non_numeric_values",
+        "outcome": "passed",
+        "when": "teardown",
+        "xfail": false
+      }
+    ]
+  }
+}

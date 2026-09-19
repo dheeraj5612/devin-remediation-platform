@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devin Remediation Platform</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#182232;background:#f5f6fa;font-size:15px}
+*{box-sizing:border-box}body{margin:0}main{max-width:1160px;margin:auto;padding:44px 28px}a{color:#5146cb;text-decoration:none}a:hover{text-decoration:underline}
+header{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:32px}h1{font-size:30px;letter-spacing:-1px;margin:8px 0}h2{font-size:19px;margin:0}p{line-height:1.55;color:#586779}small,.eyebrow{font-size:12px;letter-spacing:.05em;color:#667186}.badge{display:inline-block;padding:7px 10px;border-radius:6px;background:#e9e5ff;color:#4e36a9;font-size:12px;font-weight:700}.notice{background:#fff6d9;border:1px solid #ebd598;padding:14px 18px;border-radius:9px;margin-bottom:24px;font-size:14px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}.metric,.case{background:#fff;border:1px solid #e0e5ed;border-radius:12px;padding:22px}.metric strong{display:block;font-size:30px;margin-top:12px}.secondary strong{font-size:22px}.case{margin-top:20px}.case-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.tag{background:#eef1f6;padding:6px 10px;border-radius:6px;font-size:12px}.VERIFIED{color:#087847;background:#e2f6eb}.FAILED,.ESCALATED{color:#ab3340;background:#fbe9ec}.comparison{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.panel{background:#f8f9fc;border-radius:9px;padding:18px}.panel label{font-size:11px;letter-spacing:.09em;font-weight:700;color:#738095}.result{display:flex;justify-content:space-between;gap:16px;margin-top:14px}.DETECTED,.PASS{color:#087847}.ESCAPED,.FAIL{color:#ab3340}.details{display:flex;gap:22px;flex-wrap:wrap;margin-top:20px;font-size:13px;color:#677586}code{overflow-wrap:anywhere;font-size:12px}.empty{text-align:center;padding:50px;background:#fff;border:1px dashed #cbd3e0;border-radius:12px}.timeline{border-left:2px solid #ddd7fa;margin:22px 0;padding-left:22px}.event{margin-bottom:18px}.event p{margin:5px 0;font-size:13px}footer{font-size:12px;color:#7b8594;margin-top:30px}details{margin-top:8px}.error{color:#ab3340;font-size:13px}
+@media(max-width:750px){main{padding:25px 16px}.metrics{grid-template-columns:1fr 1fr}.comparison{grid-template-columns:1fr}header{align-items:flex-start}h1{font-size:24px}}
+</style>
+</head>
+<body><main>
+<header><div><div class="eyebrow">ENGINEERING QUALITY / EXTERNAL EVALUATION</div><h1><a href="/" style="color:inherit">Devin Remediation Platform</a></h1><p>Agent completion is not verification. The regression has to be caught.</p></div><span class="badge">{{ mode }}</span></header>
+{% if mode == 'SIMULATION' %}<div class="notice"><strong>SIMULATION</strong> · Synthetic external adapters, real persisted orchestration. No GitHub writes or Devin calls. These are not Superset repair results.</div>{% endif %}
+<section class="metrics">
+{% for key,label in [('attempted','Attempted jobs'),('active','Active jobs'),('verified','Verified jobs'),('failed','Escalated / failed')] %}<div class="metric"><small>{{ label }}</small><strong>{{ metrics[key] }}</strong></div>{% endfor %}
+</section>
+<section class="metrics secondary">
+<div class="metric"><small>First-pass verification</small><strong>{{ metrics.first_pass[0] }} / {{ metrics.first_pass[1] }}</strong><small>Jobs with an evaluation result</small></div>
+<div class="metric"><small>Correction recovery</small><strong>{{ metrics.recovery[0] }} / {{ metrics.recovery[1] }}</strong><small>Completed correction attempts</small></div>
+<div class="metric"><small>Median event → PR discovery</small><strong>{{ '%.1fs'|format(metrics.event_to_pr) if metrics.event_to_pr is not none else 'Not available' }}</strong><small>{{ metrics.duplicates }} duplicate deliveries suppressed</small></div>
+<div class="metric"><small>Median event → verification</small><strong>{{ '%.1fs'|format(metrics.event_to_verified) if metrics.event_to_verified is not none else 'Not available' }}</strong><small>Verified jobs only</small></div>
+</section>
+{% for job in jobs %}
+<article class="case">
+<div class="case-head"><div><small>{{ job.case_id }} · {{ job.mode }}</small><h2 style="margin-top:8px"><a href="/jobs/{{ job.id }}">{{ cases[job.case_id].title }}</a></h2></div><span class="tag {{ job.status }}">{{ job.status }}</span></div>
+<div class="comparison"><div class="panel"><label>BEFORE / ORIGINAL TEST</label><div class="result"><span>Correct behavior</span><strong>{{ job.evidence.get('before_normal','Not confirmed') }}</strong></div><div class="result"><span>Controlled regression</span><strong>{{ job.evidence.get('before_mutant','Not confirmed') }}</strong></div></div>
+<div class="panel"><label>AFTER / CANDIDATE TEST</label><div class="result"><span>Correct behavior</span><strong class="{{ job.evidence.get('normal','') }}">{{ job.evidence.get('normal','Pending') }}</strong></div><div class="result"><span>Same controlled regression</span><strong class="{{ job.evidence.get('mutant','') }}">{{ job.evidence.get('mutant','Pending') }}</strong></div></div></div>
+<div class="details"><span>Issue {% if job.mode == 'LIVE' %}<a href="https://github.com/{{ job.repository }}/issues/{{ job.issue_number }}">#{{ job.issue_number }}</a>{% else %}#{{ job.issue_number }} (simulated){% endif %}</span><span>Session {% if job.devin_session_url and job.devin_session_url.startswith('https://app.devin.ai/') %}<a href="{{ job.devin_session_url }}">Open Devin</a>{% else %}{{ 'Simulated' if job.devin_session_id else 'Pending' }}{% endif %}</span><span>PR {% if job.candidate_pr_url %}<a href="{{ job.candidate_pr_url }}">#{{ job.candidate_pr_number }}</a>{% else %}{{ 'Simulated' if job.candidate_pr_number else 'Pending' }}{% endif %}</span><span>Corrections {{ job.correction_count }} / 1</span></div>
+{% if job.candidate_sha %}<p style="font-size:12px">Evaluated SHA <code>{{ job.candidate_sha }}</code></p>{% endif %}
+{% if job.evidence.get("normal_report") %}<details><summary>Independent evaluation evidence</summary><pre style="white-space:pre-wrap;font-size:12px">{{ job.evidence|tojson(indent=2) }}</pre></details>{% endif %}
+{% if job.failure_reason %}<p class="error">{{ job.failure_reason }}</p>{% endif %}
+</article>
+{% else %}<div class="empty"><h2>No {{ mode.lower() }} jobs yet</h2><p>Run the simulation, or confirm a baseline and deliver an approved signed issue-label event.</p></div>{% endfor %}
+{% if timeline %}<h2 style="margin-top:30px">Persisted event timeline</h2><div class="timeline">{% for event in timeline %}<div class="event"><small>{{ event.timestamp|timestamp }}</small><p><strong>{{ event.event_type }}</strong></p>{% if event.details %}<details><summary>Evidence</summary><code>{{ event.details|tojson }}</code></details>{% endif %}</div>{% endfor %}</div>{% endif %}
+<footer>One external evaluator. At most one correction. Exact-SHA verdicts. Human review remains required. Refresh to load the latest persisted state.</footer>
+</main></body></html>

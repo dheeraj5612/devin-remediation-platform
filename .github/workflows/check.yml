@@ -1,0 +1,38 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - run: pip install -r requirements.lock
+      - run: python -m ruff check . && python -m pytest -q
+      - run: python -m app.demo --check
+      - name: Docker reviewer smoke test
+        run: |
+          docker compose up --build -d
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8000/health; then break; fi
+            sleep 2
+          done
+          curl --fail http://localhost:8000/health
+          curl --fail http://localhost:8000/ | grep SIMULATION
+          docker compose down
+      - name: Confirm pinned Superset baselines
+        run: python -m app.cli baseline --build
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation-evidence
+          path: |
+            data/baselines/*.json
+            data/last-evaluator.log
+          if-no-files-found: ignore
