@@ -88,7 +88,7 @@ class Validator:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.repo = settings.superset_repo_path.resolve()
-        self.python = settings.superset_python.resolve()
+        self.python = settings.superset_python.absolute()
 
     def git(self, *args: str) -> str:
         result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-C", str(self.repo), *args],
