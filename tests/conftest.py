@@ -1,3 +1,6 @@
+"""Shared fixtures: simulation settings, a fresh SQLite Store, the web client, a fake-backed Orchestrator (`rig`),
+and `live`: LIVE-mode settings with fake credentials plus on-disk baseline proof and context for API-client tests."""
+
 import json
 
 import pytest

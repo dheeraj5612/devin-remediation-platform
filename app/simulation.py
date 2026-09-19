@@ -1,3 +1,12 @@
+"""Credential-free demo: real webhook, database and orchestrator; fake Devin, GitHub and validator.
+
+ELI5: `make demo` runs the whole pipeline in a sandbox so a reviewer can watch
+every state transition without an API key or a Superset checkout. The fakes
+are scripted: issue 101 succeeds first try, 102 needs the one correction,
+103 fails twice and escalates, 104 survives a worker restart. The demo also
+sends one duplicate webhook to show deduplication.
+"""
+
 import hashlib
 import hmac
 import json
@@ -7,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from app.cases import Case
 from app.config import ROOT, Settings
-from app.models import Job
+from app.models import TERMINAL, Job
 from app.db import Store
 from app.devin import SessionState
 from app.github import Candidate
@@ -17,9 +26,11 @@ from app.orchestrator import Orchestrator
 from app.validator import Evaluation
 
 SCENARIOS = {101: "First-pass verification", 102: "Correction recovery", 103: "Escalation", 104: "Worker restart"}
+EXPECTED = {101: "VERIFIED", 102: "VERIFIED", 103: "ESCALATED", 104: "VERIFIED"}
 
 
 def simulation_settings(data_dir: Path = Path("data")) -> Settings:
+    # `_env_file=None`: never pick up real credentials from `.env` in a demo.
     return Settings(_env_file=None, mode="SIMULATION", data_dir=data_dir, github_repository="demo/superset",
                     github_repository_id=42, github_webhook_secret="simulation-only", poll_seconds=0.001,
                     enable_live=False, allow_local_validation=False, case_issues={}, cases_file=ROOT / "evals/cases.yaml",
@@ -27,6 +38,8 @@ def simulation_settings(data_dir: Path = Path("data")) -> Settings:
 
 
 class FakeDevin:
+    """In-memory Devin: one session per job; each correction bumps a 'revision' that changes the fake PR SHA."""
+
     def __init__(self) -> None:
         self.sessions: dict[str, dict] = {}
         self.create_count = 0
@@ -51,6 +64,8 @@ class FakeDevin:
 
 
 class FakeGitHub:
+    """Fake PR per issue (number = issue + 1000); its SHA is derived from the session's revision."""
+
     def __init__(self, devin: FakeDevin) -> None:
         self.devin = devin
 
@@ -65,6 +80,8 @@ class FakeGitHub:
 
 
 class FakeValidator:
+    """Scripted verdicts: 103 always fails; 102 fails once then passes; everything else passes."""
+
     def validate(self, job: Job, case: Case, candidate: Candidate) -> Evaluation:
         if job.issue_number == 103 or (job.issue_number == 102 and job.correction_count == 0):
             return Evaluation("REGRESSION_SURVIVED", "SIMULATION: regression escaped", "PASS", "PASS")
@@ -72,6 +89,7 @@ class FakeValidator:
 
 
 def signed_event(settings: Settings, issue: int, delivery: str) -> tuple[bytes, dict]:
+    """Build a GitHub-style `issues/labeled` webhook body and headers, correctly HMAC-signed."""
     payload = {"action": "labeled", "repository": {"id": settings.github_repository_id,
                "full_name": settings.github_repository}, "issue": {"number": issue},
                "label": {"name": "devin-remediate"}}
@@ -82,6 +100,7 @@ def signed_event(settings: Settings, issue: int, delivery: str) -> tuple[bytes, 
 
 
 def run_demo(settings: Settings) -> dict:
+    """Drive all four scenarios to completion and assert the expected outcomes."""
     if settings.mode != "SIMULATION":
         raise ValueError("Demo must never write live storage")
     app = create_app(settings)
@@ -94,26 +113,26 @@ def run_demo(settings: Settings) -> dict:
     with TestClient(app) as client:
         for issue in SCENARIOS:
             body, headers = signed_event(settings, issue, f"demo-{issue}")
-            response = client.post("/webhooks/github", content=body, headers=headers)
-            response.raise_for_status()
-            if issue == 101:
+            client.post("/webhooks/github", content=body, headers=headers).raise_for_status()
+            if issue == 101:  # replay the exact same delivery: must be flagged duplicate, not enqueued twice
                 assert client.post("/webhooks/github", content=body, headers=headers).json()["duplicate"]
         restarted = False
         for _ in range(30):
             for job in store.jobs():
                 orchestrator.step(job.id)
                 if job.issue_number == 104 and store.get(job.id).devin_session_id and not restarted:
+                    # Simulate a worker crash after the session exists: new Store + Orchestrator, same DB.
                     store.engine.dispose()
                     store = Store(settings)
                     orchestrator = Orchestrator(settings, store, devin, github, validator)
                     orchestrator.resume()
                     restarted = True
-            if all(job.status in {"VERIFIED", "ESCALATED", "FAILED"} for job in store.jobs()):
+            if all(job.status in TERMINAL for job in store.jobs()):
                 break
         else:
             raise RuntimeError("Simulation failed to settle")
         actual = {job.issue_number: job.status for job in store.jobs()}
-        expected = {101: "VERIFIED", 102: "VERIFIED", 103: "ESCALATED", 104: "VERIFIED"}
-        if actual != expected or devin.create_count != 4 or len(devin.messages) != 2:
+        # 4 sessions (one per job, none recreated after the restart) and 2 corrections (102 and 103).
+        if actual != EXPECTED or devin.create_count != 4 or len(devin.messages) != 2:
             raise RuntimeError(f"Unexpected simulation outcome: {actual}")
     return {"mode": settings.mode, "scenarios": actual, "sessions_created": devin.create_count, **metrics(store)}

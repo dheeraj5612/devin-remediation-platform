@@ -1,3 +1,5 @@
+"""Oracle unit tests (classify/compare_runs) plus scope checks and a real subprocess run in a temp git repo."""
+
 import json
 import os
 import subprocess

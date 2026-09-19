@@ -1,3 +1,11 @@
+"""Operator commands (also exposed as Make targets).
+
+    demo               run the credential-free simulation (add --serve to browse its dashboard)
+    baseline           prove each case is weak on the real Superset checkout; writes data/live/baselines/
+    bootstrap-context  create/reuse the Devin Playbook + Knowledge note; writes data/live/context.json
+    doctor             list everything still missing before the live worker may run
+"""
+
 import argparse
 import json
 import shutil
@@ -15,21 +23,23 @@ def main() -> None:
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--serve", action="store_true")
     args = parser.parse_args()
+
     if args.command == "demo":
         settings = simulation_settings()
         if args.reset and settings.storage.exists():
-            shutil.rmtree(settings.storage)
-        result = run_demo(settings)
-        print(json.dumps(result, indent=2))
+            shutil.rmtree(settings.storage)  # only ever deletes data/simulation/
+        print(json.dumps(run_demo(settings), indent=2))
         if args.serve:
             import uvicorn
             from app.main import create_app
             uvicorn.run(create_app(settings), host="127.0.0.1", port=8000)
         return
+
     settings = Settings()
     registry = Registry(settings)
     if args.command == "baseline":
         results = [Validator(settings).baseline(case) for case in registry.cases.values()]
+        # Print the verdicts without the (large) raw pytest evidence; the JSON files keep everything.
         print(json.dumps([{key: value for key, value in proof.items() if key not in {"normal_evidence", "mutant_evidence"}}
                           for proof in results], indent=2))
         raise SystemExit(0 if all(proof["outcome"] == "CONFIRMED" for proof in results) else 1)
@@ -38,6 +48,8 @@ def main() -> None:
             raise SystemExit("DEVIN_API_KEY and DEVIN_ORG_ID are required")
         print(json.dumps(Devin(settings).bootstrap(registry), indent=2))
         return
+
+    # doctor: config + interpreter + context + baselines. Exit 1 if anything is missing.
     problems = settings.live_errors()
     if not settings.superset_python.is_file():
         problems.append("Prepared Superset Python interpreter is missing")

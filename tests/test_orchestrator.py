@@ -1,3 +1,5 @@
+"""State machine end to end with fakes: launch-once guard, retries, correction bound, stale SHA, timeouts, restart."""
+
 from datetime import timedelta
 
 import pytest

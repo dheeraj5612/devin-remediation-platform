@@ -1,3 +1,4 @@
+"""GitHub adapter: only exact-repo PR URLs are discovered; PR must be open/non-draft/right base/same fork."""
 
 import httpx
 import pytest

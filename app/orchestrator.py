@@ -1,3 +1,13 @@
+"""`Orchestrator`: advances one job one step at a time, safely, forever-resumable.
+
+ELI5: the worker calls `step(job_id)` over and over. Each call looks at the
+job's status, does exactly one thing (launch Devin, poll it, validate the PR,
+send the one correction), writes the result to the database, and returns.
+Because every side effect is recorded *before* the expensive call that
+follows it, a crash at any point leaves enough breadcrumbs to resume without
+paying for a second Devin session.
+"""
+
 from app.cases import Registry
 from app.config import Settings
 from app.db import Store
@@ -14,11 +24,13 @@ class Orchestrator:
         self.registry = Registry(settings)
 
     def resume(self) -> None:
+        """Called once at worker start: note that we picked up unfinished jobs (nothing is recreated)."""
         for job in self.store.jobs():
             if job.status not in TERMINAL and job.devin_session_id:
                 self.store.change(job.id, "WORKER_RESUMED", details={"session_id": job.devin_session_id})
 
     def step(self, job_id: str) -> None:
+        """Do the next thing for this job based on its status, then schedule the next look."""
         job = self.store.get(job_id)
         if job.status in TERMINAL:
             return
@@ -38,14 +50,17 @@ class Orchestrator:
             elif job.status == "CORRECTING" and not job.correction_acknowledged:
                 self.correct(job)
             else:
-                self.poll(job)
+                self.poll(job)  # DEVIN_RUNNING with a session, or CORRECTING waiting for a new commit
         except RemoteError as exc:
+            # Provider trouble. Three flavours, all bounded to 3 attempts:
             current = self.store.get(job.id)
             failures = current.api_failures + 1
             if not current.devin_session_id and current.launch_requested and failures <= 3:
+                # We POSTed "create session" and lost the answer. Do NOT POST again; next step reconciles by tag.
                 self.store.change(job.id, "LAUNCH_UNCERTAIN", api_failures=failures,
                                   failure_reason="Session creation uncertain; reconcile by job tag, never recreate")
             elif exc.retryable and failures <= 3:
+                # 429/5xx/network: back off exponentially (or as long as Retry-After says) and try again.
                 self.store.change(job.id, "PROVIDER_RETRY", api_failures=failures,
                                   details={"category": str(exc), "attempt": failures})
                 self.store.defer(job.id, max(exc.retry_after, 2 ** failures))
@@ -54,11 +69,18 @@ class Orchestrator:
                 self.store.change(job.id, "PROVIDER_ERROR", status="FAILED", api_failures=failures,
                                   failure_reason=str(exc))
         except (ValueError, OSError, KeyError):
+            # Our own misconfiguration (bad baseline, missing context, illegal transition): stop, don't retry.
             self.store.change(job.id, "CONFIGURATION_ERROR", status="FAILED",
                               failure_reason="Invalid configuration, baseline evidence, or context; run make doctor")
         self.store.defer(job.id, self.settings.poll_seconds)
 
     def launch(self, job: Job) -> None:
+        """Create the Devin session exactly once.
+
+        `launch_requested` is written *before* the POST. If we come back here with it already
+        set, the previous attempt's reply was lost: look the session up by tag instead of
+        creating another one; if it truly doesn't exist, escalate to a human.
+        """
         if job.launch_requested:
             session = self.devin.find_session(job.id)
             if session is None:
@@ -73,6 +95,7 @@ class Orchestrator:
                           api_failures=0, failure_reason=None)
 
     def poll(self, job: Job) -> None:
+        """Ask Devin how the session is doing; move to PR_OPENED when a PR in our repo appears."""
         state = self.devin.get_session(job.devin_session_id)
         if state.session_id != job.devin_session_id:
             raise RemoteError("Session identity mismatch")
@@ -81,6 +104,7 @@ class Orchestrator:
             self.store.change(job.id, "PROVIDER_STATE", provider_status=provider, api_failures=0)
         candidate = self.github.discover(state)
         if candidate and (job.status != "CORRECTING" or candidate.sha != job.candidate_sha):
+            # New PR, or a new commit on the PR after our correction request.
             self.store.change(job.id, "PR_OPENED", status="PR_OPENED", candidate_pr_number=candidate.number,
                               candidate_pr_url=candidate.url, candidate_sha=candidate.sha,
                               pr_created_at=job.pr_created_at or now(), api_failures=0)
@@ -94,6 +118,7 @@ class Orchestrator:
                               failure_reason="Session suspended; inspect provider budget or approval state")
 
     def changed_head(self, job: Job, candidate: Candidate) -> None:
+        """The PR got a new commit while we were looking. Re-validate the new SHA, but not forever."""
         count = job.stale_count + 1
         if count > 3:
             self.store.change(job.id, "HEAD_UNSTABLE", status="ESCALATED", failure_reason="PR head changed repeatedly")
@@ -102,6 +127,7 @@ class Orchestrator:
                               stale_count=count, validation_status="STALE_SHA")
 
     def evaluate(self, job: Job) -> None:
+        """Run the independent validator on the pinned SHA and act on its verdict."""
         candidate = self.github.candidate(job.candidate_pr_number)
         if candidate.sha != job.candidate_sha:
             self.changed_head(job, candidate)
@@ -113,18 +139,21 @@ class Orchestrator:
         if result.outcome == "STALE_SHA":
             self.changed_head(job, self.github.candidate(candidate.number))
         elif result.outcome == "VERIFIED":
+            # Re-check the head one last time so VERIFIED always names the commit that actually passed.
             current = self.github.candidate(candidate.number)
             if current.sha != candidate.sha:
                 self.changed_head(job, current)
                 return
             self.store.change(job.id, "VERIFIED", status="VERIFIED", validated_sha=candidate.sha, failure_reason=None)
         elif result.repair_failure and job.correction_count == 0:
+            # The repair is wrong (test fails on good code, or still misses the regression): one retry.
             self.store.change(job.id, "CORRECTING", status="CORRECTING", correction_count=1)
         else:
             status = "FAILED" if result.outcome == "INFRA_ERROR" else "ESCALATED"
             self.store.change(job.id, status, status=status, failure_reason=result.summary)
 
     def correct(self, job: Job) -> None:
+        """Send the single correction message into the same session (same lost-reply guard as `launch`)."""
         if job.correction_requested:
             self.store.change(job.id, "CORRECTION_UNCERTAIN", status="ESCALATED",
                               failure_reason="Correction acknowledgement missing; inspect the same session, do not resend automatically")

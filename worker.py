@@ -1,3 +1,11 @@
+"""Worker process: the only thing that spends money (creates Devin sessions) or runs candidate code.
+
+ELI5: a loop that every few seconds asks the database "which jobs are due?"
+and calls `Orchestrator.step` on each. It refuses to start unless live config
+is complete and every case has baseline proof, and a file lock guarantees at
+most one worker per database (two workers could double-launch Devin).
+"""
+
 import fcntl
 import logging
 import time
@@ -21,7 +29,7 @@ def main() -> None:
         raise SystemExit("Live worker disabled: " + ", ".join(problems))
     registry = Registry(settings)
     for case in registry.cases.values():
-        registry.evidence(case)
+        registry.evidence(case)  # raises if any baseline proof is missing or stale
     store = Store(settings)
     with (settings.storage / "worker.lock").open("w") as lock:
         try:
@@ -29,7 +37,7 @@ def main() -> None:
         except BlockingIOError:
             raise SystemExit("Another worker already owns this database") from None
         orchestrator = Orchestrator(settings, store, Devin(settings), GitHub(settings), Validator(settings))
-        orchestrator.resume()
+        orchestrator.resume()  # pick up where a previous worker stopped; never recreates sessions
         try:
             while True:
                 for job in store.jobs(active_only=True):

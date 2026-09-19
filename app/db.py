@@ -1,3 +1,11 @@
+"""`Store`: the only place that reads or writes SQLite.
+
+ELI5: the worker and the web server are separate processes. They never talk
+to each other directly; they both talk to this database. Every write here is
+a short transaction, so a crash between two steps leaves a consistent record
+the worker can resume from.
+"""
+
 import json
 import logging
 from datetime import timedelta
@@ -16,22 +24,28 @@ logger = logging.getLogger("remediation")
 class Store:
     def __init__(self, settings: Settings) -> None:
         settings.storage.mkdir(parents=True, exist_ok=True)
-        self.mode = settings.mode
+        self.mode = settings.mode  # every query is filtered by mode; LIVE never sees SIMULATION rows
         self.engine = create_engine(settings.database_url, connect_args={"timeout": 10, "check_same_thread": False})
 
         @event.listens_for(self.engine, "connect")
         def configure(connection: Connection, _: Any) -> None:
             connection.execute("PRAGMA foreign_keys=ON")
-            connection.execute("PRAGMA busy_timeout=10000")
-            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA busy_timeout=10000")  # wait instead of erroring when the worker holds a lock
+            connection.execute("PRAGMA journal_mode=WAL")  # readers (dashboard) don't block the writer (worker)
 
         Base.metadata.create_all(self.engine)
         self.session = sessionmaker(self.engine, expire_on_commit=False)
 
     def enqueue(self, delivery_id: str, repository: str, issue: int, case_id: str) -> tuple[Job, bool]:
-        # Serialize just the deduplication and insert, never an external call.
+        """Turn an accepted webhook into a job. Returns (job, was_duplicate).
+
+        Two kinds of duplicate are handled:
+        * GitHub re-sent the *same* delivery ID  -> DUPLICATE_DELIVERY, return the existing job.
+        * A *different* delivery for the same issue -> DUPLICATE_EXECUTION, still return the existing job.
+        Either way exactly one job (and one paid Devin session) exists per issue.
+        """
         with self.session() as session:
-            session.execute(text("BEGIN IMMEDIATE"))
+            session.execute(text("BEGIN IMMEDIATE"))  # take the write lock now: check-then-insert must be atomic
             delivery = session.get(Delivery, delivery_id)
             if delivery:
                 delivery.duplicate_count += 1
@@ -47,7 +61,7 @@ class Store:
                 job = Job(mode=self.mode, repository=repository, issue_number=issue, case_id=case_id,
                           github_delivery_id=delivery_id)
                 session.add(job)
-                session.flush()
+                session.flush()  # assigns job.id so the event row can reference it
                 self._event(session, job, "QUEUED")
             else:
                 self._event(session, job, "DUPLICATE_EXECUTION")
@@ -63,6 +77,7 @@ class Store:
             return job
 
     def jobs(self, active_only: bool = False) -> list[Job]:
+        """All jobs in this mode; `active_only` = not finished and due for another poll."""
         query = select(Job).where(Job.mode == self.mode)
         if active_only:
             query = query.where(Job.status.not_in(TERMINAL), Job.next_poll_at <= now())
@@ -78,6 +93,11 @@ class Store:
 
     def change(self, job_id: str, event_type: str, *, status: str | None = None,
                details: dict | None = None, **values: Any) -> Job:
+        """Record an event and (optionally) move the job to a new status, in one transaction.
+
+        `values` are plain column updates (e.g. devin_session_id=...). A status change is
+        checked against TRANSITIONS, so an impossible jump raises instead of corrupting state.
+        """
         with self.session.begin() as session:
             job = session.get(Job, job_id)
             if job is None or job.mode != self.mode:
@@ -94,6 +114,7 @@ class Store:
         return job
 
     def defer(self, job_id: str, seconds: float) -> None:
+        """Don't look at this job again for `seconds` (polling interval or retry backoff)."""
         with self.session.begin() as session:
             job = session.get(Job, job_id)
             job.next_poll_at = now() + timedelta(seconds=seconds)
@@ -101,4 +122,4 @@ class Store:
     @staticmethod
     def _event(session: Session, job: Job, event_type: str, details: dict | None = None) -> None:
         session.add(Event(job_id=job.id, event_type=event_type, details=details or {}))
-        logger.info(json.dumps({"job_id": job.id, "event": event_type, "mode": job.mode}))
+        logger.info(json.dumps({"job_id": job.id, "event": event_type, "mode": job.mode}))  # one JSON line per event

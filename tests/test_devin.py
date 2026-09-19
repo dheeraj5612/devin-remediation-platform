@@ -1,3 +1,5 @@
+"""Devin API client against a mock transport: request shape, error sanitizing, pagination, bootstrap idempotency."""
+
 import json
 
 import httpx

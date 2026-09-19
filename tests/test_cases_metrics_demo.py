@@ -1,3 +1,5 @@
+"""Registry loading, baseline-evidence gate, static weak-test detector, metrics denominators, and the full demo."""
+
 import json
 from datetime import timedelta
 

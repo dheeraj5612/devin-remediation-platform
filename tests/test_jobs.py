@@ -1,3 +1,5 @@
+"""Store: durable enqueue, delivery + logical dedupe under concurrency, transition guard, mode isolation."""
+
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest

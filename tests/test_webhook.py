@@ -1,3 +1,5 @@
+"""Every webhook admission gate: signature, size, event/label filters, repo identity, issue binding, dedupe."""
+
 import hashlib
 import hmac
 import json
