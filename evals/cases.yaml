@@ -1,0 +1,46 @@
+- id: histogram-invalid-column
+  title: Histogram rejection test can pass when invalid input is accepted
+  source_repository: apache/superset
+  baseline_sha: 5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e
+  affected_paths:
+    - superset/utils/pandas_postprocessing/histogram.py
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py
+  allowed_paths:
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py
+  test_ids:
+    - tests/unit_tests/pandas_postprocessing/test_histogram.py::test_histogram_with_non_numeric_column
+  challenge: histogram-accept-invalid
+  contract: >-
+    Genuinely non-numeric values in the selected column must raise ValueError with
+    the selected column's name. Numeric strings such as "10" are valid numeric
+    input and must continue to produce the same histogram as numbers.
+  acceptance: >-
+    The designated test passes normally and fails through an assertion when invalid
+    values are coerced to zero by the registered challenge. Keep the designated test ID.
+  inspection: >-
+    Source inspected. Assertions exist only inside except ValueError. The adjacent
+    numeric-string example is not evidence that numeric strings should be rejected.
+    Runtime confirmation is required before this case can trigger live work.
+- id: schema-missing-engine
+  title: Database parameter test does not require a missing-engine error
+  source_repository: apache/superset
+  baseline_sha: 5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e
+  affected_paths:
+    - superset/databases/schemas.py
+    - tests/unit_tests/databases/schema_tests.py
+  allowed_paths:
+    - tests/unit_tests/databases/schema_tests.py
+  test_ids:
+    - tests/unit_tests/databases/schema_tests.py::test_database_parameters_schema_mixin_no_engine
+  challenge: schema-accept-missing-engine
+  contract: >-
+    Loading individual database parameters with DYNAMIC_FORM and no engine must
+    raise ValidationError with the existing missing-engine message. Valid engine
+    fixtures must retain their existing behavior.
+  acceptance: >-
+    The designated test passes normally and fails through an assertion when the
+    registered missing-engine bypass is active. Keep the designated test ID.
+  inspection: >-
+    Source and dummy_schema fixture inspected. The no-engine test has assertions
+    only inside except ValidationError. Other invalid-engine examples use fixtures
+    that need separate investigation and are deliberately not included.

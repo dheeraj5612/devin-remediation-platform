@@ -1,0 +1,28 @@
+services:
+  web:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - data:/data
+  worker:
+    build: .
+    profiles: [live]
+    command: python worker.py
+    healthcheck:
+      disable: true
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      SUPERSET_REPO_PATH: /superset
+      SUPERSET_PYTHON: /superset/.venv/bin/python
+    volumes:
+      - data:/data
+      - ${SUPERSET_REPO_PATH:-./.superset}:/superset
+volumes:
+  data:

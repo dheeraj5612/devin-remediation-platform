@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="10">
+<title>Devin Remediation Platform</title>
+<style>
+:root { color-scheme: light; font-family: Inter, system-ui, sans-serif; color: #17262d; background: #f5f7f7; }
+* { box-sizing: border-box; } body { margin: 0; } main { max-width: 1120px; padding: 38px 24px 64px; margin: auto; }
+a { color: #006c70; text-decoration: none; } a:hover { text-decoration: underline; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 20px; border-bottom: 1px solid #d9e2e3; padding-bottom: 24px; }
+h1 { font-size: 28px; letter-spacing: -.8px; margin: 4px 0 10px; } h2 { font-size: 18px; margin: 30px 0 16px; }
+h3 { font-size: 16px; margin: 0 0 20px; } p { line-height: 1.6; } .muted, small { color: #5c7077; }
+.eyebrow { letter-spacing: 2px; text-transform: uppercase; font-size: 11px; font-weight: 700; }
+.badge { border-radius: 4px; padding: 6px 10px; font: 700 11px system-ui; letter-spacing: .6px; white-space: nowrap; background: #fff0cd; color: #6c4a00; }
+.LIVE { color: #075e50; background: #def3ec; } .notice { border-left: 3px solid #dfb64d; padding-left: 14px; font-size: 13px; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 26px; }
+.metric, .case { background: white; border: 1px solid #dce5e5; border-radius: 8px; padding: 22px; }
+.number { font-size: 32px; line-height: 1.3; font-weight: 650; } .label { font-size: 12px; color: #577077; }
+.secondary { display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; margin: 20px 0 8px; }
+.cases { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; font-size: 13px; }
+.comparison section + section { border-left: 1px solid #dce5e5; padding-left: 18px; }
+.row { display: flex; justify-content: space-between; gap: 12px; margin: 12px 0; }
+.good { color: #076e51; } .warn { color: #986b05; } .bad { color: #a53434; }
+.scroll { overflow-x: auto; } table { border-collapse: collapse; width: 100%; font-size: 13px; background: white; }
+th { text-align: left; font-size: 11px; text-transform: uppercase; color: #61767b; letter-spacing: .6px; }
+th, td { padding: 15px 12px; border-bottom: 1px solid #e4e9e9; vertical-align: top; }
+code { font: 12px ui-monospace, SFMono-Regular, monospace; overflow-wrap: anywhere; }
+.empty { padding: 30px; text-align: center; border: 1px dashed #cbd6d8; }
+.timeline { border-left: 2px solid #c5d7d6; padding-left: 20px; } .event { margin: 0 0 18px; font-size: 13px; }
+footer { margin-top: 32px; font-size: 12px; color: #61767b; }
+@media(max-width: 700px) { .metrics { grid-template-columns: repeat(2, 1fr); } .cases { grid-template-columns: 1fr; } header { align-items: flex-start; } }
+</style>
+</head>
+<body><main>
+<header><div><div class="eyebrow">Independent evaluation</div><h1><a href="/">Devin Remediation Platform</a></h1>
+<div class="muted">A passing session is not a passing repair.</div></div><span class="badge {{ mode }}">{{ mode }}</span></header>
+{% if mode == 'SIMULATION' %}<p class="notice">Simulation only. Fake external adapters, real webhooks and durable orchestration. No paid calls, GitHub writes, or live remediation evidence. Timings measure local simulation execution.</p>
+{% elif not live_enabled %}<p class="notice">Live execution is disabled. Confirm the baselines and complete preflight before enabling the worker.</p>{% endif %}
+<div class="metrics">
+{% for name, value in [('Attempted jobs', metrics.attempted), ('Active jobs', metrics.active), ('Verified jobs', metrics.verified), ('Escalated / failed', metrics.unsuccessful)] %}
+<div class="metric"><div class="number">{{ value }}</div><div class="label">{{ name }}</div></div>{% endfor %}
+</div>
+<div class="secondary"><span>First-pass verified <strong>{{ metrics.first_pass }} / {{ metrics.first_pass_denominator }}</strong></span>
+<span>Correction recovery <strong>{{ metrics.correction_recovery }} / {{ metrics.correction_denominator }}</strong></span>
+<span>Duplicate deliveries suppressed <strong>{{ metrics.duplicate_deliveries }}</strong></span></div>
+<div class="secondary muted"><span>Median event → PR: {{ metrics.median_event_to_pr_seconds if metrics.median_event_to_pr_seconds is not none else 'N/A' }} s</span>
+<span>Median event → verification: {{ metrics.median_event_to_verified_seconds if metrics.median_event_to_verified_seconds is not none else 'N/A' }} s</span></div>
+<small>First-pass denominator: jobs with a conclusive initial evaluation. Correction denominator: acknowledged correction messages.</small>
+<h2>Did the test become stronger?</h2><div class="cases">
+{% for id, case in cases.items() %}
+{% set latest = (jobs | selectattr('case_id', 'equalto', id) | list | last) %}
+{% set proof = evidence[id] %}
+<div class="case"><h3>{{ case.title }}</h3><div class="comparison">
+<section><div class="eyebrow">Before · {{ proof.outcome }}</div><div class="row"><span>Correct behavior</span><strong>{{ proof.normal }}</strong></div>
+<div class="row"><span>Regression</span><strong>{{ proof.mutant }}</strong></div>
+<small>{{ 'Regression escaped' if proof.mutant == 'PASS' else 'No baseline proof yet' }}</small></section>
+<section><div class="eyebrow">After · candidate</div><div class="row"><span>Correct behavior</span><strong>{{ latest.validation.normal if latest and latest.validation else 'NOT_RUN' }}</strong></div>
+<div class="row"><span>Same regression</span><strong class="{{ 'good' if latest and latest.status == 'VERIFIED' else 'warn' }}">{{ 'DETECTED' if latest and latest.validation and latest.validation.mutant == 'ASSERTION_FAILED' else ('ESCAPED' if latest and latest.validation and latest.validation.mutant == 'PASS' else 'NOT_RUN') }}</strong></div>
+<small>{{ latest.status if latest else 'Awaiting candidate' }}</small></section></div></div>
+{% endfor %}</div>
+<h2>Remediation jobs</h2>
+{% if jobs %}<div class="scroll"><table><thead><tr><th>Issue / case</th><th>State</th><th>Session / PR</th><th>Exact candidate SHA</th><th>Corrections</th></tr></thead><tbody>
+{% for job in jobs | reverse %}<tr><td><a href="/jobs/{{ job.id }}">#{{ job.issue_number }} · {{ job.case_id }}</a>
+{% if mode == 'LIVE' %}<br><a href="https://github.com/{{ job.repository }}/issues/{{ job.issue_number }}">GitHub issue ↗</a>{% endif %}</td>
+<td><strong class="{{ 'good' if job.status == 'VERIFIED' else 'bad' if job.status in ['ESCALATED', 'FAILED'] else '' }}">{{ job.status }}</strong><br><small>{{ job.validation_status or '' }}</small></td>
+<td>{% if job.devin_session_url %}<a href="{{ job.devin_session_url }}">Devin session ↗</a>{% else %}<small>{{ job.devin_session_id or 'Not started' }}</small>{% endif %}
+{% if job.candidate_pr_url %}<br><a href="{{ job.candidate_pr_url }}">PR #{{ job.candidate_pr_number }} ↗</a>{% elif job.candidate_pr_number %}<br><small>Simulated PR #{{ job.candidate_pr_number }}</small>{% endif %}</td>
+<td><code>{{ job.candidate_sha or 'Not available' }}</code>{% if job.validated_sha %}<br><small>Verified at this SHA</small>{% endif %}</td><td>{{ job.correction_count }} / 1</td></tr>{% endfor %}
+</tbody></table></div>{% else %}<div class="empty">No jobs yet. A signed issue-label webhook queues an approved case.</div>{% endif %}
+{% if selected %}<h2>Event timeline</h2><div class="timeline">{% for event in events %}<div class="event"><small>{{ event.timestamp }} UTC</small><br><strong>{{ event.event_type }}</strong>
+{% if event.details %}<br><code>{{ event.details | tojson }}</code>{% endif %}</div>{% endfor %}</div>
+{% for job in jobs if job.id == selected %}{% if job.failure_reason %}<p class="notice">{{ job.failure_reason }}</p>{% endif %}{% endfor %}{% endif %}
+<footer>Verified means the designated test passed normally and detected the active, pre-registered regression at the recorded SHA. Human PR review is still required. Refreshes every 10 seconds.</footer>
+</main></body></html>
