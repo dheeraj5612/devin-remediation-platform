@@ -39,6 +39,7 @@ def now() -> datetime:
 class Base(DeclarativeBase):
     """Shared SQLAlchemy base that collects all tables for ``create_all``."""
 
+    # ELI5: this class has no columns; SQLAlchemy uses it to collect the real tables.
     pass
 
 

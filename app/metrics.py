@@ -15,13 +15,14 @@ from app.models import Event, Job, TERMINAL
 ASSESSED_OUTCOMES = {"VERIFIED", "NORMAL_FAILED", "REGRESSION_SURVIVED", "APPLICATION_FAILED", "REGRESSION"}
 
 
+# ELI5: this helper reads the store once and returns the dashboard's counters.
 def metrics(store: Store) -> dict:
     """Return customer-facing counts whose numerator and denominator stay explicit."""
-    # ELI5: read the job diary once, then derive every tile from those persisted facts.
     # ELI5: pass the same jobs and events to one pure calculator for a consistent snapshot.
     return metrics_from_records(store.jobs(), store.events())
 
 
+# ELI5: this helper calculates every metric from one consistent job/event snapshot.
 def metrics_from_records(jobs: list[Job], events: list[Event]) -> dict:
     """Calculate metrics from one already-read job/event snapshot for consistent exports."""
     # ELI5: the HTML and JSON report reuse these same rows, so their totals cannot drift mid-render.
@@ -38,14 +39,15 @@ def metrics_from_records(jobs: list[Job], events: list[Event]) -> dict:
     pr_times = [(job.pr_created_at - job.created_at).total_seconds() for job in jobs if job.pr_created_at]
     # ELI5: measure webhook-to-verification time only for terminal verified jobs.
     verified_times = [(job.completed_at - job.created_at).total_seconds() for job in jobs if job.status == "VERIFIED"]
-    # ELI5: these maps show the whole portfolio, including jobs still waiting for a verdict.
     # ELI5: count every state, including active and escalated jobs.
     status_counts = {}
+    # ELI5: visit each job once to count its durable state.
     for job in jobs:
         # ELI5: increment the bucket for this job's durable state.
         status_counts[job.status] = status_counts.get(job.status, 0) + 1
     # ELI5: count every top-level validation outcome, including NOT_RUN.
     validation_counts = {}
+    # ELI5: visit each job once to count its durable validation outcome.
     for job in jobs:
         # ELI5: replace a missing database verdict with an explicit not-run label.
         outcome = job.validation_status or "NOT_RUN"

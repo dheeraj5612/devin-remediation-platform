@@ -2,6 +2,9 @@
 
 The report deliberately mirrors persisted control-plane facts.  It does not
 invent cost, merge, or live-remediation outcomes when the database has none.
+
+ELI5: this file turns the job diary into a safe story that both the page and
+the download can tell without guessing what happened.
 """
 
 from __future__ import annotations
@@ -18,15 +21,18 @@ from app.devin import launch_preflight
 from app.metrics import metrics_from_records
 from app.models import Event, Job
 
+# ELI5: this version label tells download consumers which report shape they received.
 REPORT_SCHEMA = "devin-remediation-evidence/v1"
 
 
+# ELI5: this helper turns timestamps into one portable UTC spelling.
 def _iso(value: Any) -> str | None:
     """Return a stable UTC string, or null when a timestamp was never set."""
+    # ELI5: keep a missing timestamp missing instead of inventing a date.
     if value is None:
         # ELI5: a missing database timestamp stays missing instead of becoming a fake date.
         return None
-    # ELI5: database timestamps are naive UTC, so append the UTC marker before export.
+    # ELI5: database timestamps without a timezone are documented as UTC.
     if getattr(value, "tzinfo", None) is None:
         # ELI5: naive values from SQLite are documented as UTC, so attach that timezone first.
         return value.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
@@ -34,13 +40,14 @@ def _iso(value: Any) -> str | None:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
+# ELI5: this helper allows only secure provider links into the customer view.
 def _safe_url(value: Any) -> str | None:
     """Allow only secure web links from provider records into clickable dashboard fields."""
-    # ELI5: a bad provider string must become plain text, never a script-capable link.
     # ELI5: return the original secure URL, or null when the value is missing or unsafe.
     return value if isinstance(value, str) and value.startswith("https://") else None
 
 
+# ELI5: this helper shapes one timeline event for safe JSON and HTML use.
 def _event_record(event: Event) -> dict[str, Any]:
     """Make one append-only event safe to serialize and display to a customer."""
     # ELI5: keep the event identity so a reviewer can connect the timeline row to the job.
@@ -57,21 +64,26 @@ def _event_record(event: Event) -> dict[str, Any]:
     }
 
 
+# ELI5: this helper names the strongest evidence currently recorded for a job.
 def evidence_level(mode: str, job: Job | None) -> str:
     """Classify how much evidence exists without treating a PR link as proof."""
-    # ELI5: simulation can exercise every state, but it cannot prove a live repair.
+    # ELI5: simulation labels stay synthetic even if their scripted state says verified.
     if mode == "SIMULATION":
         # ELI5: every simulation row is visibly synthetic, even when its scripted state says VERIFIED.
         return "SIMULATED"
+    # ELI5: a case with no job has no execution evidence yet.
     if job is None:
         # ELI5: a registered case without a job has no execution evidence yet.
         return "NO_RUN"
+    # ELI5: independent verification needs both the terminal status and tested SHA.
     if job.status == "VERIFIED" and job.validated_sha:
         # ELI5: live verification needs both the terminal status and the exact SHA that passed.
         return "INDEPENDENTLY_VERIFIED"
+    # ELI5: a candidate link or SHA shows an artifact was observed, not approved.
     if job.candidate_sha or job.candidate_pr_url:
         # ELI5: a candidate artifact was seen, but it has not earned an independent verdict.
         return "CANDIDATE_OBSERVED"
+    # ELI5: a session ID shows contact with Devin, not a successful repair.
     if job.devin_session_id:
         # ELI5: a saved session proves that Devin was observed, not that it is still running.
         return "SESSION_OBSERVED"
@@ -79,18 +91,18 @@ def evidence_level(mode: str, job: Job | None) -> str:
     return "ADMITTED"
 
 
+# ELI5: this helper keeps the small trusted validation matrix for a job.
 def _validation(job: Job | None) -> dict[str, Any]:
     """Extract the small validation matrix that a reviewer needs first."""
-    # ELI5: keep the normal and mutant answers beside the outcome, not buried in raw JSON.
     # ELI5: start with the persisted validation map, or an empty map for an unrun case.
     raw = (job.validation or {}) if job else {}
-    # ELI5: only the small verdict summary is exported; raw subprocess/provider text stays private.
     # ELI5: keep both the normalized state-machine result and the trusted application label recognizable.
     safe_outcomes = {"VERIFIED", "NORMAL_FAILED", "REGRESSION_SURVIVED", "APPLICATION_FAILED", "CONTRACT_FAILED", "SCOPE_REJECTED", "STALE_SHA", "INFRA_ERROR", "NOT_RUN", "REGRESSION"}
     # ELI5: prefer the durable state-machine column, then the safe validation summary, then NOT_RUN.
     outcome = (job.validation_status if job else None) or raw.get("outcome") or "NOT_RUN"
     # ELI5: accept either application field name used by older and newer persisted records.
     application_status = raw.get("application_status") or raw.get("application_outcome")
+    # ELI5: older records may store the application result under a shorter key.
     if not application_status and isinstance(raw.get("application"), str):
         # ELI5: the validator's `application` field is the trusted contract result for application cases.
         application_status = raw["application"]
@@ -123,9 +135,9 @@ def _validation(job: Job | None) -> dict[str, Any]:
     }
 
 
+# ELI5: this helper filters event details before they reach a customer-facing view.
 def _safe_event_details(event: Event) -> dict[str, Any]:
     """Keep useful event coordinates while excluding raw provider or subprocess text."""
-    # ELI5: show the labels needed to follow a timeline and drop everything that may contain secrets.
     # ELI5: these coordinates explain the workflow while excluding arbitrary provider text.
     allowed = {"outcome", "correction_count", "sha", "normal", "mutant", "session_id", "attempt", "stale_count", "application", "application_status"}
     # ELI5: only known labels may pass through a timeline status field.
@@ -134,11 +146,13 @@ def _safe_event_details(event: Event) -> dict[str, Any]:
                 "REGRESSION", "CONTRACT_FAILED"}
     # ELI5: build a fresh safe map instead of mutating the database event.
     safe: dict[str, Any] = {}
+    # ELI5: inspect each stored detail and copy only fields the report understands.
     for key, value in (event.details or {}).items():
+        # ELI5: skip fields that are outside the small public event vocabulary.
         if key not in allowed:
             # ELI5: unlisted fields may contain secrets, commands, or provider prose, so omit them.
             continue
-        # ELI5: status labels are useful; arbitrary strings could contain provider output or secrets.
+        # ELI5: only allow known status words in fields that describe a verdict.
         if key in {"outcome", "normal", "mutant", "application", "application_status"} and value not in statuses:
             # ELI5: an unknown status is less useful than exposing an unsafe string, so omit it.
             continue
@@ -148,9 +162,9 @@ def _safe_event_details(event: Event) -> dict[str, Any]:
     return safe
 
 
+# ELI5: this helper converts one database row into the dashboard's safe job record.
 def _job_record(mode: str, job: Job, events: list[Event], case: Case | None = None) -> dict[str, Any]:
     """Convert one database job into a presentation and export record."""
-    # ELI5: links and exact SHAs let a customer leave the dashboard and inspect the same artifact.
     # ELI5: normalize validation once so every job view uses the same safe matrix.
     validation = _validation(job)
     # ELI5: old records default to test quality; new application cases carry their explicit kind.
@@ -223,8 +237,10 @@ def _job_record(mode: str, job: Job, events: list[Event], case: Case | None = No
     }
 
 
+# ELI5: this helper presents either synthetic proof or the registry's checked baseline.
 def _case_proof(settings: Settings, registry: Registry, case: Case) -> dict[str, Any]:
     """Load live baseline proof while keeping simulation evidence explicitly synthetic."""
+    # ELI5: simulation proof explains the demo while staying visibly non-live.
     if settings.mode == "SIMULATION":
         # ELI5: the demo uses scripted adapters, so this is a demonstration state, not a baseline claim.
         application = getattr(case, "kind", "test_quality") == "application"
@@ -243,9 +259,11 @@ def _case_proof(settings: Settings, registry: Registry, case: Case) -> dict[str,
             # ELI5: explain the boundary in the card and JSON export.
             "statement": "Synthetic demo state. No live baseline was measured.",
         }
+    # ELI5: live proof is read through the registry so fingerprints and provenance are enforced.
     try:
         # ELI5: ask the registry to enforce the stored baseline fingerprint and provenance.
         proof = registry.evidence(case)
+    # ELI5: stale or missing proof becomes a safe pending state instead of an exception page.
     except (OSError, ValueError):
         # ELI5: represent missing or stale evidence without leaking the exception text.
         return {
@@ -281,6 +299,7 @@ def _case_proof(settings: Settings, registry: Registry, case: Case) -> dict[str,
     }
 
 
+# ELI5: this helper describes one approved case beside its newest observed job.
 def _case_record(settings: Settings, registry: Registry, case: Case, jobs: list[Job]) -> dict[str, Any]:
     """Describe one approved workflow and its before/after evidence."""
     # ELI5: find this case's jobs so the portfolio can show its latest observed state.
@@ -332,19 +351,20 @@ def _case_record(settings: Settings, registry: Registry, case: Case, jobs: list[
     }
 
 
+# ELI5: this helper gives one setup gate a safe label, state, and explanation.
 def _check(label: str, ready: bool, detail: str, *, state: str | None = None) -> dict[str, str]:
     """Build one readiness row without exposing secrets or credential values."""
-    # ELI5: the dashboard says which gate is open, blocked, or not evaluated.
     # ELI5: use an explicit state override when simulation needs NOT_EVALUATED or SIMULATION.
     return {"label": label, "state": state or ("PASS" if ready else "BLOCKED"), "detail": detail}
 
 
+# ELI5: this helper summarizes live setup gates without making a provider call.
 def pilot_readiness(settings: Settings, registry: Registry) -> dict[str, Any]:
     """Report operator-visible pilot gates using read-only configuration checks."""
     # ELI5: collect configuration errors once so the live readiness panel shares one answer.
     problems = settings.live_errors()
+    # ELI5: simulation can show the gates, but it must never call itself production-ready.
     if settings.mode == "SIMULATION":
-        # ELI5: a demo should explain the live gates, but never call the demo ready for production.
         # ELI5: show the two live gates as not evaluated instead of calling a demo production-ready.
         checks = [
             _check("Execution mode", False, "Simulation is intentionally isolated from paid calls.", state="SIMULATION"),
@@ -364,7 +384,6 @@ def pilot_readiness(settings: Settings, registry: Registry) -> dict[str, Any]:
             "checks": checks,
         }
 
-    # ELI5: make doctor remains the final operator gate; this panel only summarizes safe checks.
     # ELI5: the context bundle is a file gate that can be checked without a provider call.
     context_path = settings.storage / "context.json"
     # ELI5: require both a real checkout and an executable interpreter, matching launch_preflight.
@@ -373,29 +392,39 @@ def pilot_readiness(settings: Settings, registry: Registry) -> dict[str, Any]:
                          and os.access(settings.superset_python, os.X_OK))
     # ELI5: start with the safe file check before parsing any operator context.
     context_ready = context_path.is_file()  # ELI5: a present file still needs the shared semantic preflight.
+    # ELI5: only run the deeper local preflight when its two required files exist.
     if interpreter_ready and context_ready:
-        # ELI5: validate every active case with the same gate used before enqueue and session creation.
+        # ELI5: prefer issue-bound cases, while retaining a fallback for an empty issue map.
         active_cases = list({case.id: case for case in registry.by_issue.values()}.values())
+        # ELI5: use the active bindings when present, otherwise check every registered case.
         cases_to_check = active_cases or list(registry.cases.values())
+        # ELI5: every active case must pass the same local checks used before enqueueing.
         for active_case in cases_to_check:
+            # ELI5: check each case independently so one failure can block readiness safely.
             try:
                 # ELI5: this reads only local files and checks repository, branch, and resource identity.
                 launch_preflight(settings, active_case, settings.github_repository)
+            # ELI5: any malformed local context means this gate is not ready.
             except (OSError, TypeError, ValueError, KeyError):
                 # ELI5: malformed or mismatched context blocks readiness without exposing raw details.
                 context_ready = False
+                # ELI5: stop checking after the first failed case because readiness is already blocked.
                 break
     # ELI5: every registered case must have exactly one issue binding before launch.
     bindings_ready = set(settings.case_issues) == set(registry.cases)
     # ELI5: start optimistic, then turn this off when any baseline proof is stale or missing.
     baselines_ready = True
+    # ELI5: one missing or stale baseline blocks the whole set of approved cases.
     for case in registry.cases.values():
+        # ELI5: check this case's proof independently from the other cases.
         try:
             # ELI5: registry.evidence performs the current fingerprint and provenance check.
             registry.evidence(case)
+        # ELI5: a single case without current proof blocks the aggregate baseline gate.
         except (OSError, ValueError):
             # ELI5: one bad case blocks the aggregate baseline gate.
             baselines_ready = False
+            # ELI5: stop once the aggregate answer is known to be blocked.
             break
     # ELI5: each row names one live preflight requirement and its safe explanatory text.
     checks = [
@@ -427,9 +456,9 @@ def pilot_readiness(settings: Settings, registry: Registry) -> dict[str, Any]:
     }
 
 
+# ELI5: this helper counts the durable handoffs that make up the workflow funnel.
 def _workflow_steps(jobs: list[Job]) -> list[dict[str, Any]]:
     """Summarize the event-to-oracle path without inventing downstream review state."""
-    # ELI5: each count is derived from a persisted field, so the funnel cannot imply a merge that was not recorded.
     # ELI5: count a session only when its ID was persisted.
     sessions = sum(bool(job.devin_session_id) for job in jobs)
     # ELI5: count a candidate only when a SHA or provider PR URL was persisted.
@@ -453,15 +482,16 @@ def _workflow_steps(jobs: list[Job]) -> list[dict[str, Any]]:
     ]
 
 
+# ELI5: this helper builds the one report snapshot shared by HTML and JSON.
 def build_report(settings: Settings, store: Store, registry: Registry) -> dict[str, Any]:
     """Build the complete JSON report used by the dashboard and download endpoint."""
-    # ELI5: fetch once, normalize once, and reuse the same truthful records in HTML and JSON.
     # ELI5: take one job snapshot so the dashboard and export agree.
     jobs = store.jobs()
     # ELI5: take the matching event snapshot for timeline and denominator calculations.
     events = store.events()
     # ELI5: group events by job so each normalized row can carry its own timeline.
     events_by_job: dict[str, list[Event]] = defaultdict(list)
+    # ELI5: place each event under its parent job so detail pages can show its timeline.
     for event in events:
         # ELI5: put each append-only event under its persisted parent job.
         events_by_job[event.job_id].append(event)

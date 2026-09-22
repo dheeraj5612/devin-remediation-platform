@@ -48,6 +48,7 @@ def main() -> None:
         )
         orchestrator.resume()  # Resume saved sessions without recreating provider work.
         try:
+            # ELI5: keep polling until an operator interrupt while persisting each job step.
             while True:
                 for job in store.jobs(active_only=True):  # Select only nonterminal jobs whose backoff expired.
                     orchestrator.step(job.id)  # Advance one job and persist its next durable state.
@@ -56,5 +57,6 @@ def main() -> None:
             return  # Let a normal operator interrupt stop the loop cleanly.
 
 
+# ELI5: run the live worker loop when this file is invoked directly.
 if __name__ == "__main__":
     main()  # Run the worker when invoked as `python worker.py`.
