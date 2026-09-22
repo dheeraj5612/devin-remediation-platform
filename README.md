@@ -44,7 +44,7 @@ make test
 make lint
 ```
 
-## Proofline: the evidence workbench
+## DevinTrace: the evidence workbench
 
 The workbench at `/dashboard` and the download at `/report.json` are two views of the same read-only report model in `app/report.py`. The report includes the execution mode, an explicit simulation truth statement, KPI denominators, the event-to-oracle workflow, registered case contracts, readiness gates, persisted job status, exact candidate and validated SHAs, validation outcomes, and event timelines. A report link is not treated as proof of a merge or a live repair.
 

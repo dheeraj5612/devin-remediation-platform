@@ -1,6 +1,6 @@
-# Proofline — an evidence workbench
+# DevinTrace — an evidence workbench
 
-Proofline is the product identity for the **Devin Remediation Platform** UI. It is not an official Devin product or a replacement for the underlying orchestration system.
+DevinTrace is the product identity for the **Devin Remediation Platform** UI. It is not an official Devin product or a replacement for the underlying orchestration system.
 
 ## Audience and the job to be done
 
@@ -32,7 +32,7 @@ The companion [composition studies](docs/design/concepts.html) use the same expl
 |---|---|---|---|
 | **Graphite Dispatch** | Dark technical console, phosphor signals, branch topology, monospaced terminal rows | Dense and operational | Rejected: familiar “developer console” territory; the session looks more important than the evidence |
 | **Audit Casebook** | Warm paper, burgundy ink, large serif editorial headings, numbered folios | Distinctive and careful | Rejected: too much of a static report metaphor for active runs, filters, and changing candidate state |
-| **Cobalt Evidence Desk / Proofline** | Warm-white field, electric cobalt, sharp rules, oversized native grotesk type, commit-like proof marks, sparse lime acceptance | Strong product identity with high information clarity | **Selected:** an inspectable ledger and explicit before/after proof make the core claim visible without a charting framework or ornamental dashboard cards |
+| **Cobalt Evidence Desk / DevinTrace** | Warm-white field, electric cobalt, sharp rules, oversized native grotesk type, commit-like proof marks, sparse lime acceptance | Strong product identity with high information clarity | **Selected:** an inspectable ledger and explicit before/after proof make the core claim visible without a charting framework or ornamental dashboard cards |
 
 ## The selected system
 

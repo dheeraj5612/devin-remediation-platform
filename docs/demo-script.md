@@ -13,7 +13,7 @@ This walkthrough uses the credential-free simulation for deterministic product b
 
 ## 0:00 to 0:45, what problem are we solving?
 
-Open `/dashboard` (the Proofline workbench) and say:
+Open `/dashboard` (the DevinTrace workbench) and say:
 
 > A green agent PR does not prove that a repair is safe. This demo covers two workflows: strengthening a weak test with normal and controlled-regression checks, and repairing a known application regression where malformed import YAML must return a validation error instead of an `UnboundLocalError`. In both workflows, the agent produces a candidate and an independent oracle checks the exact candidate SHA outside the Devin session. Synthetic evidence stays visible so this demo cannot be mistaken for a live customer result.
 

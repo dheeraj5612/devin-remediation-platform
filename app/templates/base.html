@@ -10,12 +10,12 @@
   <meta property="og:image" content="{{ request.base_url }}static/social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Proofline — independent proof for autonomous repair">
+  <meta property="og:image:alt" content="DevinTrace — independent proof for autonomous repair">
   <meta name="twitter:card" content="summary_large_image">
   {% if page_name == 'overview' %}<link rel="canonical" href="{{ request.base_url }}"><meta property="og:url" content="{{ request.base_url }}">{% endif %}
-  <meta property="og:title" content="{{ title }} · Proofline">
+  <meta property="og:title" content="{{ title }} · DevinTrace">
   <meta property="og:description" content="Independent evidence for Devin-powered remediation. A candidate is not a verified repair.">
-  <title>{{ title }} · Proofline</title>
+  <title>{{ title }} · DevinTrace</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
@@ -26,7 +26,7 @@
 <body class="page-{{ page_name }}">
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Proofline home"><img class="brand-mark" src="/static/mark.svg" width="34" height="34" alt=""><img class="brand-word" src="/static/wordmark.svg" width="218" height="32" alt="Proofline"></a>
+    <a class="brand" href="/" aria-label="DevinTrace home"><img class="brand-mark" src="/static/mark.svg" width="34" height="34" alt=""><img class="brand-word" src="/static/wordmark.svg" width="260" height="32" alt="DevinTrace"></a>
     <nav class="main-nav" aria-label="Main navigation">
       <a href="/" {{ 'aria-current=page' if page_name == 'overview' else '' }}>Overview</a>
       <a href="/dashboard" {{ 'aria-current=page' if page_name in ['dashboard','job'] else '' }}>Workbench</a>
@@ -36,7 +36,7 @@
     <span class="header-note"><span class="square-dot" aria-hidden="true"></span>Read-only by design</span>
   </header>
   <main id="main" tabindex="-1">{% block content %}{% endblock %}</main>
-  <footer class="site-footer"><span>Proofline <span class="muted">/ Devin Remediation Platform</span></span><a href="https://github.com/dheeraj5612/devin-remediation-platform">Source &amp; setup <span aria-hidden="true">↗</span></a></footer>
+  <footer class="site-footer"><span>DevinTrace <span class="muted">/ Devin Remediation Platform</span></span><a href="https://github.com/dheeraj5612/devin-remediation-platform">Source &amp; setup <span aria-hidden="true">↗</span></a></footer>
   <div id="notice" class="notice" hidden><p id="notice-message" role="status" aria-live="polite"></p><button class="notice-dismiss" type="button" data-dismiss>Dismiss</button></div>
 </body>
 </html>
