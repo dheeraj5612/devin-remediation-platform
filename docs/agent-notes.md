@@ -3,7 +3,8 @@
 ## Scope and base
 
 - Integration base: `cb0ddd1`.
-- Final integrated branch: breadth, readiness, simulation, and presentation changes are complete on `codex/breadth-presentation`.
+- Final integrated branch: breadth, readiness, simulation, and presentation changes are complete on `codex/breadth-presentation` at head `93776c773c0d784ef47d8a8d5d9782a1a1f8a0b9`.
+- Draft PR [#4](https://github.com/dheeraj5612/devin-remediation-platform/pull/4) is mergeable. GitHub Verify passed in both [run 35677656472](https://github.com/dheeraj5612/devin-remediation-platform/actions/runs/35677656472) and [run 35677659445](https://github.com/dheeraj5612/devin-remediation-platform/actions/runs/35677659445).
 
 ## Decisions
 
@@ -16,7 +17,8 @@
 ## Verification
 
 - Maintained code annotation checks, Ruff `0.16.8`, Python compilation, diff whitespace checks, and docstring-stripped AST equivalence passed for the maintained source.
-- The full suite passed **133 tests** under Python `3.14.7`; the final test log is `/private/tmp/drp-breadth-evidence-final5/run-mjve6o23/output.log`.
+- The full suite passed **133 tests** under Python `3.14.7`; GitHub Verify also passed the suite under Python `3.12.14`.
+- Commit `93776c7` makes the live-shaped test fixture point at the checkout and running interpreter, so CI does not require a developer-only `.superset` installation.
 - The local source oracle confirmed baseline `dedfe23a805151decca6deaf15b032e040e42e82` as `REGRESSION` and known reference `22ec1f598808859c42dccff21665786224127122` as `PASS`, both with trusted provenance. The sanitized record is [`evidence/application-oracle.json`](../evidence/application-oracle.json), with ignored baseline proof at `data/live/baselines/import-unparseable-yaml.json`.
 
 ## Follow up
