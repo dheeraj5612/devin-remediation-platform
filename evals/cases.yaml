@@ -44,3 +44,26 @@
     Source and dummy_schema fixture inspected. The no-engine test has assertions
     only inside except ValidationError. Other invalid-engine examples use fixtures
     that need separate investigation and are deliberately not included.
+- id: import-unparseable-yaml
+  kind: application
+  title: Malformed import YAML returns validation error instead of UnboundLocalError
+  source_repository: dheeraj5612/superset
+  target_branch: remediation-import-yaml
+  baseline_sha: dedfe23a805151decca6deaf15b032e040e42e82
+  affected_paths:
+    - superset/commands/importers/v1/utils.py
+  allowed_paths:
+    - superset/commands/importers/v1/utils.py
+  test_ids: []
+  challenge: application-import-unparseable-yaml
+  contract: >-
+    A malformed import YAML file must be reported as one file-scoped validation error and
+    must never crash while constructing that diagnostic. A valid mapping must still load.
+  acceptance: >-
+    The trusted control-plane oracle imports the candidate module from the detached checkout,
+    exercises a valid mapping control, and distinguishes the pinned UnboundLocalError from
+    the fixed empty-config plus one validation-error result.
+  inspection: >-
+    The source-backed fix initializes config before load_yaml can raise. The baseline parent
+    is the commit immediately before the public fork's fix commit 22ec1f598808859c42dccff21665786224127122.
+  acceptance_test: evals/application_cases/import_unparseable_yaml.py

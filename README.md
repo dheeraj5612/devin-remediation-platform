@@ -32,15 +32,25 @@ pip install -c constraints.txt -e '.[dev]'
 make demo
 ```
 
-Open `http://127.0.0.1:8000`. No `.env`, credentials, GitHub writes, or Devin calls are needed. `make demo` resets **only** `data/simulation`, signs real webhook requests, and exercises the real persistence/orchestration code with fake external adapters. It covers first-pass verification, correction recovery, escalation, duplicate delivery, and worker restart with a saved session.
+Open `http://127.0.0.1:8000`. No `.env`, credentials, GitHub writes, or Devin calls are needed. `make demo` resets **only** `data/simulation`, signs real webhook requests, and exercises the real persistence/orchestration code with fake external adapters. It covers first-pass verification, correction recovery, application acceptance and rejection, escalation, duplicate delivery, and worker restart with a saved session.
 
 The `SIMULATION` badge is permanent. Synthetic outcomes and local execution times are not live remediation evidence. To run without starting the server:
+
+The current deterministic run produces **6 jobs, 4 `VERIFIED`, 2 `ESCALATED`, 6 sessions, and 3 correction messages**. These are local simulation counts from persisted records, not customer success rates or live Devin results.
 
 ```bash
 python -m app.cli demo --reset
 make test
 make lint
 ```
+
+## Evidence-first dashboard
+
+The dashboard at `/` and the download at `/report.json` are two views of the same read-only report model in `app/report.py`. The report includes the execution mode, an explicit simulation truth statement, KPI denominators, the event-to-oracle workflow, registered case contracts, readiness gates, persisted job status, exact candidate and validated SHAs, validation outcomes, and event timelines. A report link is not treated as proof of a merge or a live repair.
+
+The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
+
+For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). It covers what problem the platform solves, how the signed event and independent oracle fit together, why Devin is used for investigation, and the gates for a one-finding pilot. The script distinguishes deterministic simulation evidence from fields available only after a configured live run.
 
 ## Why Devin
 
@@ -55,18 +65,21 @@ A syntax rule can identify assertions that only run inside `except`, but it does
 
 Each phase uses a fresh detached worktree. An autouse external fixture first proves the intended behavior or mutation is active. Import provenance must point into that worktree, not an installed copy of Superset. Exact test IDs must be collected and complete setup, call, and teardown. Skips, xfails, missing tests, non-assertion exceptions, timeouts, and inactive controls cannot produce `VERIFIED`.
 
-Before running candidate Python, validation requires a descendant of the pinned baseline, modifications only to the registered test file, regular non-executable files, no additions/deletions/renames, and at most 200 changed lines. It records the evaluated SHA and re-reads the PR head before accepting it. A moving head is rechecked at most three times.
+Before running candidate Python, validation requires a descendant of the pinned baseline, changes only within the registered scope, regular non-executable files, no additions/deletions/renames, and at most 200 changed lines. Test-quality cases allow their registered test file; application cases allow their approved production path and use a trusted acceptance oracle outside the candidate checkout. The validator records the evaluated SHA and re-reads the PR head before accepting it. A moving head is rechecked at most three times.
 
-### Two proposed cases
+### Registered cases and evaluation modes
 
 Pinned upstream: `5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e`.
+
+The application case is pinned separately to `dedfe23a805151decca6deaf15b032e040e42e82` and targets the registered `remediation-import-yaml` branch.
 
 | Case | Source inspection | Runtime admission |
 | --- | --- | --- |
 | `histogram-invalid-column` | `test_histogram_with_non_numeric_column` asserts only inside `except`. The challenge makes invalid values numeric without raising. Numeric strings such as `"10"` must remain valid. | **Unconfirmed** |
 | `schema-missing-engine` | `test_database_parameters_schema_mixin_no_engine` asserts only inside `except`. The challenge accepts dynamic-form parameters without an engine. | **Unconfirmed** |
+| `import-unparseable-yaml` | Application oracle exercises valid YAML and malformed YAML against the candidate production module. The baseline defect raises `UnboundLocalError` while constructing the malformed-file diagnostic. | **Confirmed locally** ([oracle evidence](evidence/application-oracle.json)) |
 
-These are source-inspected hypotheses, not measured successes. The full Superset environment was unavailable during this build. `make baseline` must produce normal PASS, mutant PASS, and active positive controls before a case can enter the live queue. A failure to import, collect, or activate is an infrastructure error, not proof of a blind spot. The numeric-string example is not treated as invalid input, and schema tests whose fixture returns a valid dummy engine are not assumed to test an invalid engine.
+The two test-quality rows are source-inspected hypotheses, not measured successes. The application row has a local pinned-source oracle result: the baseline reproduced the expected regression and the known fixed reference passed with candidate provenance. This is validator evidence, not a Devin run or a candidate PR. The full Superset test-quality environment was unavailable during this build. `make baseline` must produce normal PASS, mutant PASS, and active positive controls for test-quality cases, or a controlled `REGRESSION` result with candidate provenance for the application case, before a case can enter the live queue. A failure to import, collect, or activate is an infrastructure error, not proof of a blind spot. The numeric-string example is not treated as invalid input, and schema tests whose fixture returns a valid dummy engine are not assumed to test an invalid engine.
 
 Case contracts, paths, baseline SHAs, and test IDs live in `evals/cases.yaml`. Executable commands are constructed by the validator from this trusted registry, never from an issue body. Evidence is pinned to the case and evaluator fingerprints; changing either requires baseline confirmation again.
 
@@ -74,13 +87,13 @@ Case contracts, paths, baseline SHAs, and test IDs live in `evals/cases.yaml`. E
 
 Do this in a **dedicated disposable environment**. Candidate test code is executable Python; a worktree and a scrubbed environment are not a security sandbox.
 
-1. Prepare a public Superset fork and a `remediation-demo` branch at the pinned SHA. Connect that fork to the intended Devin organization. Prepare Superset's actual dependencies and pytest environment from the pinned repository's contributor instructions. Do not substitute mocks for missing dependencies.
-2. Copy `.env.example` to `.env`. Set `SUPERSET_REPO_PATH`, `SUPERSET_PYTHON`, and optionally `SUPERSET_CONFIG_PATH` to the prepared environment. Set `ALLOW_LOCAL_VALIDATION=true`. Run `make baseline`. Both cases must be confirmed; inspect the evidence under `data/live/baselines/`.
+1. Prepare a public Superset fork and the registered case branches at their pinned SHAs. The test-quality cases use `remediation-demo`; the application case uses its case-specific target branch. Connect that fork to the intended Devin organization. Prepare Superset's actual dependencies and pytest environment from the pinned repository's contributor instructions. Do not substitute mocks for missing dependencies.
+2. Copy `.env.example` to `.env`. Set `SUPERSET_REPO_PATH`, `SUPERSET_PYTHON`, and optionally `SUPERSET_CONFIG_PATH` to the prepared environment. Set `ALLOW_LOCAL_VALIDATION=true`. Run `make baseline`. Every registered case must be confirmed; inspect the evidence under `data/live/baselines/`.
 3. Set `DEVIN_API_KEY`, `DEVIN_ORG_ID`, and `DEVIN_MAX_ACU`. Use a credential accepted by the organization's v3 API, with session and context-resource permissions. Set `GITHUB_REPOSITORY` to the **Superset fork**, its numeric `GITHUB_REPOSITORY_ID`, a read-capable `GITHUB_TOKEN`, and a random `GITHUB_WEBHOOK_SECRET`.
 4. Run `make bootstrap-context`. This explicitly creates or reuses the organization playbook and knowledge note, but does not create a session. Existing resources with the same name but different content are rejected for manual review.
 5. Create one issue per confirmed case in the fork, including its contract and baseline evidence. Bind the actual issue numbers in `.env`, for example `CASE_ISSUES={"histogram-invalid-column":123,"schema-missing-engine":124}`. Keep them unlabeled for now.
 6. Set `ENABLE_LIVE=true`; run `make doctor`. Start the web process and worker in separate terminals. Configure an `issues` webhook with JSON, the shared secret, and the public HTTPS URL ending in `/webhooks/github`. Expose only the webhook path; keep the unauthenticated dashboard private.
-7. Add `devin-remediate` to one approved issue. **This can start paid work.** Inspect the session, exact PR SHA, evaluation evidence, and event timeline before triggering the second case. Cloud Devin must author the Superset repairs; this repository does not contain pre-written demonstration fixes.
+7. Add `devin-remediate` to one approved issue. **This can start paid work.** Inspect the session, exact PR SHA, evaluation evidence, and event timeline before triggering another case. Cloud Devin must author the Superset repairs; this repository does not contain pre-written demonstration fixes.
 
 ```bash
 uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
@@ -114,8 +127,8 @@ The client uses `https://api.devin.ai/v3/organizations/{org_id}`:
 | Primitive | Implemented operations |
 | --- | --- |
 | Sessions | Create, get, cursor-paginated list, reconcile by job tag, send one correction message |
-| Playbooks | List and create/reuse `superset-test-repair-v1` |
-| Knowledge notes | List and create/reuse `superset-test-environment-v1` through `/knowledge/notes` |
+| Playbooks | List and create/reuse repo-scoped, body-hashed `superset-remediation-<repo-slug>-<body-hash10>-v2` resources |
+| Knowledge notes | List and create/reuse the same repo-scoped, body-hashed resources through `/knowledge/notes`; content drift is rejected |
 | Attachments | Upload a compact case and baseline-proof JSON file; pass its returned URL into the session |
 
 Session creation supplies documented `repos`, `playbook_id`, `knowledge_ids`, `attachment_urls`, `tags`, `max_acu_limit`, and structured-output fields. PR URLs are discovered from provider metadata and independently rechecked with GitHub. Provider metadata never substitutes for evaluation.
@@ -132,18 +145,18 @@ The dashboard and `/metrics` JSON are calculated from persisted records: attempt
 
 ## Results and verification
 
-No live Devin remediation or Superset candidate PR was executed by this build. No new runtime claim is made for either proposed Superset case.
+No live Devin remediation or Superset candidate PR was executed by this build. No new runtime claim is made for any registered case.
 
-The control-plane suite contains 109 passing tests, including real SQLite concurrency, signed HTTP requests, mock v3 requests, restart/ambiguous-response handling, local Git scope/worktree operations, subprocess timeout handling, metrics, and the full simulation. These ran with Python 3.13.5. The suite also passed from a clean checkout using an isolated virtual environment with the preinstalled dependency set. HTTP health/metrics and desktop/mobile dashboard rendering checks passed. This is not a clean-cache dependency installation.
+The control-plane suite contains 133 passing tests, including real SQLite concurrency, signed HTTP requests, mock v3 requests, restart/ambiguous-response handling, local Git scope/worktree operations, trusted application-oracle controls, subprocess timeout handling, metrics, and the full simulation. These ran with Python 3.14.7 in an isolated virtual environment. HTTP health/metrics, evidence export, escaping, and dashboard rendering checks passed.
 
-Python 3.12, Docker build/start, Ruff, and full Superset evaluation could not be executed in the build environment. Docker and Ruff are supplied as local verification commands, not claimed as passing checks. Dependency downloads were unavailable; installation from an empty dependency cache remains to be checked locally.
+The pinned application oracle evidence is recorded in [`evidence/application-oracle.json`](evidence/application-oracle.json): baseline `dedfe23...` produced the expected `REGRESSION`, and reference `22ec1f...` produced `PASS`, both with trusted provenance. Python 3.12, Docker build/start, the full test-quality Superset evaluation, and live provider calls were not executed in this environment. Ruff 0.16.8 passed against the checkout. The dependency set was installed into an isolated local environment for these checks; the oracle used a separate prepared Superset checkout and did not call Devin.
 
 ## Existing work and limitations
 
 The earlier `src/drp` prototype is consolidated into this smaller `app/` layout rather than keeping two competing implementations. Its datetime-normalization finding and original mutant patch are preserved unchanged under `findings/` as prior research. They are **not** an active registry entry or evidence from this build. Existing `DRP_*` configuration and databases are not migrated; use `.env.example` and a fresh live data directory. PR #2's injected-client authentication concern is covered in the replacement client's tests.
 
-This is a targeted take-home, not a general mutation-testing service. The two selected node IDs are evaluated, not the full Superset suite. Human review must check the complete diff and surrounding tests. Prompt injection and malicious candidate code are not solved; scope checks, evidence checks, and process environment scrubbing reduce mistakes but do not isolate hostile execution. The dashboard has no authentication, SQLite supports one worker, bootstrap is an operator-only command, and terminal jobs have no automatic retry/reset endpoint. Production work would start with isolated credential-free runners, access control, and an explicit operator reconciliation workflow.
+This is a targeted take-home, not a general mutation-testing service. Two selected test-quality node IDs and one registered application oracle are evaluated, not the full Superset suite. Human review must check the complete diff and surrounding tests. Prompt injection and malicious candidate code are not solved; scope checks, evidence checks, and process environment scrubbing reduce mistakes but do not isolate hostile execution. The dashboard has no authentication, SQLite supports one worker, bootstrap is an operator-only command, and terminal jobs have no automatic retry/reset endpoint. Production work would start with isolated credential-free runners, access control, and an explicit operator reconciliation workflow.
 
 ## Five-minute walkthrough
 
-Start at `app/main.py` for the signed event and admission gates, then `app/orchestrator.py` for durable intent and one correction. Open `app/devin.py` to show the four API primitives, and `app/validator.py` with `evals/challenges.py` for the acceptance oracle. Finish on the simulation dashboard: explain the before/after matrix, denominators, restart event, and the difference between simulation and a real measured result.
+Use [`docs/demo-script.md`](docs/demo-script.md) for the five-minute presentation. Start at `app/main.py` for signed admission, `app/orchestrator.py` for durable intent and bounded correction, and `app/validator.py` for independent test-quality or application acceptance. Finish on the simulation dashboard and explain the evidence badges, denominators, restart event, and the difference between simulation and a measured live result.

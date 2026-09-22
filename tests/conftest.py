@@ -15,11 +15,13 @@ from app.simulation import FakeDevin, FakeGitHub, FakeValidator, simulation_sett
 
 @pytest.fixture
 def settings(tmp_path):
+    """Provide isolated simulation settings for each test."""
     return simulation_settings(tmp_path)
 
 
 @pytest.fixture
 def store(settings):
+    """Create and dispose one temporary SQLite store."""
     database = Store(settings)
     yield database
     database.engine.dispose()
@@ -27,12 +29,14 @@ def store(settings):
 
 @pytest.fixture
 def client(settings):
+    """Expose the FastAPI app through its in-process test client."""
     with TestClient(create_app(settings)) as test_client:
         yield test_client
 
 
 @pytest.fixture
 def rig(settings, store):
+    """Wire deterministic Devin, GitHub, and validator fakes to the real orchestrator."""
     devin = FakeDevin()
     github = FakeGitHub(devin)
     validator = FakeValidator()
@@ -41,6 +45,7 @@ def rig(settings, store):
 
 @pytest.fixture
 def live(settings):
+    """Build live-shaped settings with synthetic evidence while making no external calls."""
     config = settings.model_copy(update={
         "mode": "LIVE", "enable_live": True, "allow_local_validation": True,
         "devin_org_id": "org-test", "case_issues": {"histogram-invalid-column": 101, "schema-missing-engine": 102},
@@ -51,8 +56,11 @@ def live(settings):
     registry = Registry(config)
     for case in registry.cases.values():
         proof = {"case_id": case.id, "mode": "LIVE", "sha": case.baseline_sha, "outcome": "CONFIRMED",
-                 "normal": "PASS", "mutant": "PASS", "case_fingerprint": case.fingerprint,
-                 "harness_fingerprint": harness_fingerprint()}
+                 "case_fingerprint": case.fingerprint, "harness_fingerprint": harness_fingerprint()}
+        if case.kind == "application":
+            proof.update(application="REGRESSION", provenance=True, normal="NOT_APPLICABLE", mutant="NOT_APPLICABLE")
+        else:
+            proof.update(normal="PASS", mutant="PASS")
         directory = config.storage / "baselines"
         directory.mkdir(parents=True, exist_ok=True)
         (directory / f"{case.id}.json").write_text(json.dumps(proof))
