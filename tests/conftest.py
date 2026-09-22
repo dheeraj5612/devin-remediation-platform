@@ -2,6 +2,8 @@
 and `live`: LIVE-mode settings with fake credentials plus on-disk baseline proof and context for API-client tests."""
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,6 +51,9 @@ def live(settings):
     config = settings.model_copy(update={
         "mode": "LIVE", "enable_live": True, "allow_local_validation": True,
         "devin_org_id": "org-test", "case_issues": {"histogram-invalid-column": 101, "schema-missing-engine": 102},
+        # Point preflight at the checkout and interpreter running these tests, so CI does not need a Superset install.
+        "superset_repo_path": Path(__file__).resolve().parents[1],
+        "superset_python": Path(sys.executable),
     })
     # Pydantic's model_copy does not validate updates; use normal assignment for secret fields.
     config.devin_api_key = config.github_webhook_secret
