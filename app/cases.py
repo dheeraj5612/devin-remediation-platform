@@ -21,6 +21,8 @@ from app.config import ROOT, Settings
 
 # ELI5: this model is the one source of truth for case scope and acceptance fields.
 class Case(BaseModel):
+    """One approved repair case with immutable scope and acceptance rules."""
+
     # ELI5: one frozen record describes exactly what Devin may attempt to repair.
     model_config = ConfigDict(frozen=True, extra="forbid")  # typos in the YAML fail loudly
     # ELI5: the slug identifies this approved case in webhooks and evidence files.
@@ -71,7 +73,7 @@ class Case(BaseModel):
     @property
     def fingerprint(self) -> str:
         """Return the stable identity of every case field used by baseline evidence."""
-        # Changing any field invalidates old baseline proofs.
+        # ELI5: changing any case field makes old baseline proof unsafe to reuse.
         return hashlib.sha256(self.model_dump_json().encode()).hexdigest()
 
 
@@ -90,6 +92,8 @@ def harness_fingerprint() -> str:
 
 # ELI5: this registry turns trusted case configuration into safe runtime lookups.
 class Registry:
+    """Load approved cases and bind only explicitly configured issue numbers."""
+
     def __init__(self, settings: Settings) -> None:
         """Load the allow-list and bind only approved issue numbers to immutable cases."""
         # ELI5: retain settings so evidence is read from the same mode-specific store.
@@ -102,7 +106,6 @@ class Registry:
         if len(self.cases) != len(entries):
             # ELI5: stop before an ambiguous case can be selected by a webhook.
             raise ValueError("Duplicate case ID")
-        # issue number -> case. Only these issue numbers can ever create a job.
         # ELI5: take only explicit issue-to-case bindings from trusted settings.
         bindings = settings.case_issues
         # ELI5: convert the configured mapping into the lookup used by webhook admission.
@@ -113,9 +116,7 @@ class Registry:
             raise ValueError("Issue bindings must be unique positive issue numbers")
         # ELI5: simulation mode intentionally uses fixed demo issue numbers instead of live bindings.
         if settings.mode == "SIMULATION":
-            # ELI5: replace live bindings with the deterministic six-issue demo map.
-            # The demo includes both application outcomes so reviewers can watch the same state machine handle them.
-            # ELI5: bind six fixed demo issues to the first three cases without reading live configuration.
+            # ELI5: bind six demo issues to the first three cases, including both app outcomes.
             self.by_issue = {101: entries[0], 102: entries[1], 103: entries[0], 104: entries[1],
                              105: entries[2], 106: entries[2]}
 

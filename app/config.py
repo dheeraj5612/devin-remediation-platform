@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # LIVE talks to GitHub/Devin/Superset for real; SIMULATION uses fakes and its own storage folder.
     mode: Literal["LIVE", "SIMULATION"] = "LIVE"
-    data_dir: Path = Path("data")
+    data_dir: Path = Path("data")  # ELI5: keep durable SQLite and proof files under this root.
     cases_file: Path = ROOT / "evals/cases.yaml"  # the trusted list of approved weak tests
     enable_live: bool = False  # extra "yes, really spend money" switch
 
@@ -35,36 +35,36 @@ class Settings(BaseSettings):
     github_repository: str = ""  # "owner/name"
     github_repository_id: int = 0  # numeric ID, checked too so a renamed repo can't impersonate
     github_webhook_secret: SecretStr = SecretStr("")  # HMAC key GitHub signs deliveries with
-    github_token: SecretStr = SecretStr("")
+    github_token: SecretStr = SecretStr("")  # token used to read and verify candidate pull requests
     case_issues: dict[str, int] = Field(default_factory=dict)  # case id -> approved issue number
     base_branch: str = "remediation-demo"  # branch Devin's PR must target
 
     # Devin: API credentials and a hard spend cap per session.
     devin_api_key: SecretStr = SecretStr("")
-    devin_org_id: str = ""
-    devin_max_acu: int = Field(default=3, ge=1, le=20)
+    devin_org_id: str = ""  # organization whose sessions and reusable context are allowed
+    devin_max_acu: int = Field(default=3, ge=1, le=20)  # provider spend ceiling for one session
     poll_seconds: float = Field(default=5, gt=0, le=60)  # how often the worker checks on a job
     job_timeout_seconds: int = Field(default=3600, ge=30, le=14400)  # give up (escalate) after this
 
     # Local Superset checkout used by the validator. SecretStr not needed; paths are not secrets.
     superset_repo_path: Path = Path(".superset")
     superset_python: Path = Path(".superset/.venv/bin/python")  # interpreter with Superset deps installed
-    superset_config_path: Path | None = None
+    superset_config_path: Path | None = None  # optional config file passed to the isolated evaluator
     allow_local_validation: bool = False  # candidate test code runs here; must be a disposable box
-    validation_timeout_seconds: int = Field(default=180, ge=1, le=600)
+    validation_timeout_seconds: int = Field(default=180, ge=1, le=600)  # bound each local oracle run
 
     @property
     def storage(self) -> Path:
         """Return the mode-specific directory where durable evidence is stored."""
 
         # LIVE and SIMULATION never share a folder, so a demo can't pollute real evidence.
-        return self.data_dir.resolve() / self.mode.lower()
+        return self.data_dir.resolve() / self.mode.lower()  # ELI5: return the isolated mode folder.
 
     @property
     def database_url(self) -> str:
         """Return the SQLite URL used by this mode's job store."""
 
-        return f"sqlite:///{self.storage / 'jobs.sqlite'}"
+        return f"sqlite:///{self.storage / 'jobs.sqlite'}"  # ELI5: point SQLite at this mode's database.
 
     def live_errors(self) -> list[str]:
         """Return the safety gates that still block live, paid execution.

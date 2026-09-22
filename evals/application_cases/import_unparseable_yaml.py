@@ -66,7 +66,9 @@ def _candidate_root() -> Path:
     """Read the validator-provided checkout root and reject an absent provenance marker."""
     # ELI5: read the root injected by the validator, never infer it from the oracle location.
     value = os.environ.get("DRP_CANDIDATE_ROOT")
+    # ELI5: fail before importing candidate code when the validator omitted its provenance root.
     if not value:
+        # ELI5: explain the missing provenance input without guessing a checkout location.
         raise RuntimeError("DRP_CANDIDATE_ROOT is required")
     # ELI5: normalize the path before comparing imported module provenance.
     return Path(value).resolve()
@@ -80,14 +82,12 @@ def _superset_app_context():
     Python imports them, so the oracle gives the checkout a disposable app and
     metadata directory before importing the production utility.
     """
-    # Use a temporary metadata home so this acceptance check cannot read or write a user's database.
     # ELI5: use a temporary metadata home so this acceptance check cannot read or write a user's database.
     with tempfile.TemporaryDirectory(prefix="drp-superset-") as home:
         # ELI5: remember environment values so the helper is safe for in-process unit tests.
         previous = {key: os.environ.get(key) for key in (
             "SUPERSET_CONFIG", "SUPERSET_HOME", "SUPERSET_SECRET_KEY", "SUPERSET_LOAD_EXAMPLES"
         )}
-        # Force deterministic, local-only Superset configuration for this subprocess.
         # ELI5: select the candidate's stock config rather than an operator's hidden module.
         os.environ["SUPERSET_CONFIG"] = "superset.config"
         # ELI5: point Superset's SQLite metadata database at the temporary home.
@@ -96,18 +96,21 @@ def _superset_app_context():
         os.environ["SUPERSET_SECRET_KEY"] = "drp-local-acceptance-secret-1234567890"
         # ELI5: avoid loading optional example data during this focused oracle.
         os.environ["SUPERSET_LOAD_EXAMPLES"] = "no"
+        # ELI5: initialize the candidate app and restore the caller environment in finally.
         try:
             # Importing the app factory first initializes encrypted SQLAlchemy fields.
             from superset.app import create_app
 
             # ELI5: initialize encryption, extensions, and model metadata before importing the target module.
             app = create_app()
+            # ELI5: keep Superset's application context active while loading its production module.
             with app.app_context():
                 # ELI5: keep current_app active while the oracle imports and calls production code.
                 yield app
         finally:
             # Restore the parent environment even when app initialization fails.
             for key, value in previous.items():
+                # ELI5: remove a setting that did not exist before the oracle started.
                 if value is None:
                     # ELI5: remove variables that were absent before this helper ran.
                     os.environ.pop(key, None)
@@ -144,13 +147,14 @@ def evaluate() -> dict[str, Any]:
         module_path = Path(module.__file__).resolve()
         # ELI5: a successful import from site-packages would make this result unrelated to the candidate SHA.
         if not module_path.is_relative_to(root):
+            # ELI5: stop when imports escape the detached candidate checkout.
             raise RuntimeError(f"Superset module escaped candidate checkout: {module_path}")
 
-        # Replacing the module's database object makes all five secret lookups deterministic.
         # ELI5: save the real database extension before replacing it with deterministic fakes.
         original_db = module.db
         # ELI5: replace database access so all secret lookups return empty lists.
         module.db = SimpleNamespace(session=_EmptySession())
+        # ELI5: run both valid and malformed controls while the fake database is installed.
         try:
             # ELI5: run the valid mapping first to prove schema loading is reachable.
             valid_schema = _RecordingSchema()
@@ -160,8 +164,10 @@ def evaluate() -> dict[str, Any]:
             valid_configs = _load_configs(module, {VALID_FILE: "key: value\n"}, valid_schema, valid_exceptions)
             # ELI5: require exactly one loaded mapping and one schema call, not a shortcut return.
             if valid_configs != {VALID_FILE: {"key": "value"}} or valid_schema.loaded != [{"key": "value"}]:
+                # ELI5: reject a valid-control shortcut that did not load exactly one mapping.
                 return {"outcome": "CONTRACT_FAILED", "reason": "valid YAML control path did not load exactly one mapping",
                         "module": str(module_path), "provenance": True}
+            # ELI5: a valid mapping must not produce a validation exception.
             if valid_exceptions:
                 # ELI5: even a valid input producing an exception means the candidate contract is wrong.
                 return {"outcome": "CONTRACT_FAILED", "reason": "valid YAML control path produced an exception",
@@ -171,6 +177,7 @@ def evaluate() -> dict[str, Any]:
             malformed_exceptions: list[Any] = []
             # ELI5: record schema calls so malformed input cannot be mistaken for a valid load.
             malformed_schema = _RecordingSchema()
+            # ELI5: run the malformed document and classify its expected error separately.
             try:
                 # ELI5: call the same production loader with one syntactically broken YAML document.
                 malformed_configs = _load_configs(
@@ -183,6 +190,7 @@ def evaluate() -> dict[str, Any]:
                 # The baseline bug is specifically a diagnostic crash before ``config`` is bound.
                 # ELI5: distinguish the exact known unbound-local message from unrelated crashes.
                 if "config" not in str(exc):
+                    # ELI5: report an unrecognized crash as a contract failure, not the known regression.
                     return {"outcome": "CONTRACT_FAILED", "reason": f"unexpected unbound-local failure: {exc}",
                             "module": str(module_path), "provenance": True}
                 # ELI5: report the exact baseline defect while preserving candidate provenance.
@@ -194,20 +202,21 @@ def evaluate() -> dict[str, Any]:
 
             # ELI5: read the one expected file-scoped validation message, if present.
             messages = str(malformed_exceptions[0].messages) if len(malformed_exceptions) == 1 else ""
-            # ELI5: require no returned config, no schema load, and the malformed filename in the error.
+            # ELI5: require one file-scoped error, no partial config or schema load, and the filename.
             if malformed_configs != {} or malformed_schema.loaded or MALFORMED_FILE not in messages:
+                # ELI5: reject malformed-input results that do not match the application contract.
                 return {"outcome": "CONTRACT_FAILED", "reason": "malformed YAML did not produce one file-scoped validation error",
                         "module": str(module_path), "provenance": True}
             # ELI5: the fixed candidate met both valid-control and malformed-input contracts.
             return {"outcome": "PASS", "module": str(module_path), "provenance": True}
         finally:
-            # Restore the imported module before the process exits so later in-process callers stay isolated.
             # ELI5: put the original database extension back before leaving the app context.
             module.db = original_db
 
 
 def main() -> int:
     """Print one machine-readable result and return a nonzero code only for infrastructure failure."""
+    # ELI5: convert evaluator setup errors into explicit infrastructure output.
     try:
         # ELI5: run the trusted evaluator and keep its structured outcome.
         result = evaluate()
@@ -220,6 +229,7 @@ def main() -> int:
     return 0 if result["outcome"] in {"PASS", "REGRESSION", "CONTRACT_FAILED"} else 2
 
 
+# ELI5: use the evaluator's return code when this oracle runs as a script.
 if __name__ == "__main__":
     # ELI5: make command-line execution use the same status code as the evaluator result.
     sys.exit(main())

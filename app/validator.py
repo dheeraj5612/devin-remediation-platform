@@ -57,7 +57,6 @@ class Evaluation:
     @property
     def repair_failure(self) -> bool:
         """Report whether one bounded correction attempt is appropriate for this verdict."""
-        # These verdicts mean the candidate repair failed and earn the single correction attempt.
         # ELI5: these are assessed repair problems, not missing infrastructure.
         return self.outcome in {"NORMAL_FAILED", "REGRESSION_SURVIVED", "APPLICATION_FAILED"}
 
@@ -108,6 +107,7 @@ def classify(report: dict, test_ids: list[str]) -> str:
             if entry.get("outcome") == "passed":
                 # ELI5: a passed setup, call, or teardown phase adds no failure signal.
                 continue
+            # ELI5: only a genuine assertion failure in the test call counts as mutant evidence.
             if entry.get("when") == "call" and entry.get("outcome") == "failed" and entry.get("assertion"):
                 # ELI5: remember the one acceptable failure shape from the registered mutant.
                 assertion_failed = True  # the test itself said "no": this is the good kind of failure
@@ -149,6 +149,7 @@ def run_process(command: list[str], cwd: Path, env: dict[str, str], timeout: int
         # ELI5: start a separate process group so timeouts can stop descendants too.
         process = subprocess.Popen(command, cwd=cwd, env=env, stdout=output, stderr=subprocess.STDOUT,
                                    start_new_session=True)
+        # ELI5: keep baseline setup failures separate from an assessed weak or fixed case.
         try:
             # ELI5: wait only for the configured validation window.
             process.wait(timeout=timeout)
@@ -167,6 +168,8 @@ def run_process(command: list[str], cwd: Path, env: dict[str, str], timeout: int
 
 # ELI5: this class owns every independent check that can grant a VERIFIED verdict.
 class Validator:
+    """Run scope, isolation, and independent oracle checks before granting VERIFIED."""
+
     def __init__(self, settings: Settings) -> None:
         """Capture the configured Superset checkout and interpreter used by disposable runs."""
         # ELI5: keep the same settings object used by baseline and candidate gates.
@@ -182,6 +185,7 @@ class Validator:
         result = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-C", str(self.repo), *args],
                                 capture_output=True, text=True, timeout=60,
                                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        # ELI5: any nonzero git result means the checkout cannot be trusted for validation.
         if result.returncode:
             # ELI5: convert any git failure into a safe configuration error without exposing command output.
             raise ValueError("Git checkout/fetch failed; inspect the configured public fork and pinned baseline")
@@ -240,6 +244,7 @@ class Validator:
             checkout = Path(directory) / "checkout"
             # ELI5: materialize the exact immutable SHA before running candidate code.
             self.git("worktree", "add", "--detach", str(checkout), sha)
+            # ELI5: always clean up the detached worktree after yielding it to the validator.
             try:
                 # ELI5: yield only the isolated checkout to the caller.
                 yield checkout
@@ -264,9 +269,11 @@ class Validator:
                            "PYTHONPATH": os.pathsep.join([str(ROOT), str(checkout)]), "PYTHONDONTWRITEBYTECODE": "1",
                            "PYTHONHASHSEED": "0", "TZ": "UTC", "SUPERSET_TESTENV": "true",
                            "SUPERSET_SECRET_KEY": "disposable-local-evaluation-only", "SUPERSET_HOME": directory}
+            # ELI5: add an optional disposable settings module only when the operator configured one.
             if self.settings.superset_config_path:
                 # ELI5: add only the explicitly configured disposable Superset settings module.
                 environment["SUPERSET_CONFIG_PATH"] = str(self.settings.superset_config_path.resolve())
+            # ELI5: run the candidate phase and collect its structured report before classifying it.
             try:
                 # ELI5: execute the phase with the hard timeout and capture its report.
                 process = run_process(command, checkout, environment, self.settings.validation_timeout_seconds)
@@ -284,6 +291,7 @@ class Validator:
                 return "INFRA_ERROR", {"reason": "missing or inconsistent pytest report", "exitcode": process.returncode}
             # ELI5: reject tests that rewrite tracked candidate files during evaluation.
             changed = subprocess.run(["git", "diff", "--quiet", "HEAD"], cwd=checkout, timeout=10).returncode
+            # ELI5: reject any phase that changed tracked candidate files during evaluation.
             if changed:
                 # ELI5: candidate tests must observe source, not rewrite it during validation.
                 return "INFRA_ERROR", {"reason": "test run modified tracked files"}  # a test rewriting code is suspicious
@@ -328,11 +336,13 @@ class Validator:
                            "PYTHONHASHSEED": "0", "TZ": "UTC", "SUPERSET_TESTENV": "true",
                            "SUPERSET_SECRET_KEY": "disposable-local-evaluation-only", "SUPERSET_HOME": directory,
                            "DRP_CANDIDATE_ROOT": str(checkout)}
+            # ELI5: pass the optional disposable settings module without exposing control-plane secrets.
             if self.settings.superset_config_path:
                 # ELI5: pass only the configured disposable Superset settings, never the control plane's secrets.
                 environment["SUPERSET_CONFIG_PATH"] = str(self.settings.superset_config_path.resolve())
             # ELI5: invoke only the trusted script with the selected interpreter.
             command = [str(self.python), str(acceptance)]
+            # ELI5: execute the trusted application oracle inside the isolated checkout.
             try:
                 # ELI5: capture the oracle's bounded output without allowing an unbounded process.
                 process = run_process(command, checkout, environment, self.settings.validation_timeout_seconds)
@@ -344,6 +354,7 @@ class Validator:
                 return "INFRA_ERROR", {"reason": "missing Superset interpreter", "command": command}
             # ELI5: keep only non-empty lines so the final JSON result is easy to parse.
             lines = [line for line in process.stdout.splitlines() if line.strip()]
+            # ELI5: parse only the oracle's final JSON line so diagnostics cannot become a verdict.
             try:
                 # ELI5: parse the oracle's last line because Superset may log diagnostics before it.
                 result = json.loads(lines[-1]) if lines else {}
@@ -361,9 +372,11 @@ class Validator:
                                         "exitcode": process.returncode, "command": command}
             # ELI5: verify the oracle did not rewrite tracked candidate source while inspecting it.
             changed = subprocess.run(["git", "diff", "--quiet", "HEAD"], cwd=checkout, timeout=10).returncode
+            # ELI5: reject an oracle that modified candidate source while it was supposed to inspect it.
             if changed:
                 # ELI5: an evaluator that changes source cannot be trusted as a read-only oracle.
                 return "INFRA_ERROR", {"reason": "application oracle modified tracked files", "result": result}
+            # ELI5: missing status or provenance cannot be treated as an application result.
             if status == "INFRA_ERROR" or result.get("provenance") is not True:
                 # ELI5: require an explicit true provenance marker before accepting any status.
                 return "INFRA_ERROR", {"reason": "application oracle could not prove candidate provenance", "result": result}
@@ -380,21 +393,24 @@ class Validator:
         # ELI5: start evidence with the case identity and both fingerprints that make it reproducible.
         proof = {"case_id": case.id, "sha": case.baseline_sha, "mode": "LIVE", "recorded_at": now().isoformat(),
                  "case_fingerprint": case.fingerprint, "harness_fingerprint": harness_fingerprint()}
+        # ELI5: keep baseline setup and verdict handling inside one failure-safe boundary.
         try:
             # ELI5: never run candidate code unless the operator explicitly enabled local validation.
             if not self.settings.allow_local_validation:
+                # ELI5: refuse all baseline execution until the operator confirms a disposable environment.
                 raise ValueError("Local execution requires ALLOW_LOCAL_VALIDATION=true in a disposable environment")
+            # ELI5: application cases use their trusted production oracle instead of pytest mutants.
             if case.kind == "application":
-                # The application baseline is expected to expose the known defect before Devin edits it.
-                # ELI5: only the exact named REGRESSION admits a baseline; other failures stay rejected.
-                # ELI5: exercise the pinned source with the trusted application contract.
+                # ELI5: exercise the pinned source with the trusted oracle; only REGRESSION confirms weakness.
                 status, evidence = self.run_application(case, case.baseline_sha)
                 # ELI5: persist application status while marking test phases inapplicable.
                 proof.update(application=status, provenance=evidence.get("result", {}).get("provenance", False),
                              application_evidence=evidence, normal="NOT_APPLICABLE", mutant="NOT_APPLICABLE")
+                # ELI5: only the exact known baseline regression confirms this application case.
                 if status == "REGRESSION":
                     # ELI5: only the exact known baseline crash confirms the case is worth repairing.
                     proof["outcome"] = "CONFIRMED"
+                # ELI5: a passing or wrong-contract baseline cannot justify remediation work.
                 elif status in {"PASS", "CONTRACT_FAILED"}:
                     # ELI5: a pre-fixed or wrong-contract baseline is not a confirmed case.
                     proof["outcome"] = "REJECTED"
@@ -410,9 +426,11 @@ class Validator:
                 normal, mutant, evidence = self.run_both(case, case.baseline_sha)
                 # ELI5: preserve both phase results and raw reports in the proof.
                 proof.update(normal=normal, mutant=mutant, **evidence)
+                # ELI5: matching passes confirm that the registered test misses its mutant.
                 if normal == mutant == "PASS":
                     # ELI5: both passes confirm the known weak test shape for test-quality cases.
                     proof["outcome"] = "CONFIRMED"
+                # ELI5: valid runs with the wrong relationship reject the weak-test claim.
                 elif normal in {"PASS", "ASSERTION_FAILED"} and mutant in {"PASS", "ASSERTION_FAILED"}:
                     # ELI5: valid runs that do not match the expected weakness are rejected.
                     proof["outcome"] = "REJECTED"
@@ -433,9 +451,11 @@ class Validator:
 
     def validate(self, job: Job, case: Case, candidate: Candidate) -> Evaluation:
         """Judge Devin's exact candidate SHA after baseline, ancestry, scope, and trusted acceptance gates."""
+        # ELI5: fetch and evaluate one immutable candidate, returning a safe verdict on any setup failure.
         try:
             # ELI5: block validation unless the disposable local evaluator is explicitly enabled.
             if not self.settings.allow_local_validation:
+                # ELI5: candidate code cannot run unless the operator enabled local validation.
                 raise ValueError("Local evaluation has not been explicitly enabled")
             # ELI5: reject stale or missing baseline proof before fetching any candidate code.
             Registry(self.settings).evidence(case)
@@ -443,20 +463,25 @@ class Validator:
             self.git("fetch", "--no-tags", f"https://github.com/{job.repository}.git", f"refs/pull/{candidate.number}/head")
             # ELI5: compare FETCH_HEAD to the previously observed SHA to detect a moving PR.
             if self.git("rev-parse", "FETCH_HEAD") != candidate.sha:
+                # ELI5: refuse to validate a PR whose fetched head differs from the observed head.
                 return Evaluation("STALE_SHA", "PR changed while fetching the candidate")
             # ELI5: enforce ancestry, allowed paths, file type, and diff budget before execution.
             error = self.scope_error(case, candidate.sha)
+            # ELI5: report scope rejection without opening the candidate worktree.
             if error:
+                # ELI5: stop before candidate code runs when any scope gate fails.
                 return Evaluation("SCOPE_REJECTED", error)
             # ELI5: application cases use the trusted production oracle instead of pytest mutants.
             if case.kind == "application":
                 # ELI5: run the oracle against this exact fetched candidate SHA.
                 status, evidence = self.run_application(case, candidate.sha)
+                # ELI5: a trusted application PASS is the only application verification result.
                 if status == "PASS":
                     # ELI5: a passing contract proves the candidate fix independently.
                     return Evaluation("VERIFIED", "Application contract passes on the candidate", application=status,
                                       evidence={"sha": candidate.sha, "acceptance_test": case.acceptance_test,
                                                 "harness_fingerprint": harness_fingerprint(), "application": evidence})
+                # ELI5: a regression or contract failure is an assessed repair failure.
                 if status in {"REGRESSION", "CONTRACT_FAILED"}:
                     # ELI5: a surviving regression or wrong contract earns one bounded correction.
                     return Evaluation("APPLICATION_FAILED", "Candidate still exposes the application regression",

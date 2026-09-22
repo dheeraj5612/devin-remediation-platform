@@ -262,13 +262,13 @@
     </section>
 
     <!-- ELI5: derive chart segments from the persisted state map, including an honest Other bucket. -->
-    {% set status_counts = metrics.status_counts or {} %}
-    {% set outcome_total = metrics.jobs_total or 0 %}
-    {% set verified_count = status_counts.get("VERIFIED", 0) %}
-    {% set escalated_count = status_counts.get("ESCALATED", 0) %}
-    {% set failed_count = status_counts.get("FAILED", 0) %}
-    {% set other_count = outcome_total - verified_count - escalated_count - failed_count %}
-    {% set circle_total = 452.39 %}
+    {% set status_counts = metrics.status_counts or {} %}{# ELI5: read the persisted state buckets once for the chart. #}
+    {% set outcome_total = metrics.jobs_total or 0 %}{# ELI5: use the admitted job count as the chart denominator. #}
+    {% set verified_count = status_counts.get("VERIFIED", 0) %}{# ELI5: count verified jobs from the same state map. #}
+    {% set escalated_count = status_counts.get("ESCALATED", 0) %}{# ELI5: count escalated jobs from the same state map. #}
+    {% set failed_count = status_counts.get("FAILED", 0) %}{# ELI5: count failed jobs from the same state map. #}
+    {% set other_count = outcome_total - verified_count - escalated_count - failed_count %}{# ELI5: keep every remaining state visible as Other. #}
+    {% set circle_total = 452.39 %}{# ELI5: use one fixed SVG circumference for all donut segments. #}
     <section class="visual-grid" aria-label="Portfolio visualizations">
       <article class="panel">
         <div class="panel-head">
@@ -278,7 +278,7 @@
           </div>
           <span class="section-kicker">{{ outcome_total }} total</span>
         </div>
-        {% if outcome_total %}
+        {% if outcome_total %}{# ELI5: draw the donut only when there is a real job denominator. #}
         <div class="outcome-layout">
           <!-- ELI5: SVG arcs show the same state counts as the legend, without a chart library. -->
           <svg class="donut" viewBox="0 0 220 220" role="img" aria-labelledby="outcome-title outcome-desc">
@@ -299,10 +299,10 @@
             <div class="legend-row"><span class="legend-name"><i class="legend-swatch"></i>Other states</span><strong>{{ other_count }}</strong></div>
           </div>
         </div>
-        {% else %}
+        {% else %}{# ELI5: show a truthful empty state when no jobs are persisted. #}
         <!-- ELI5: an empty database gets a quiet state instead of a misleading empty donut. -->
         <div class="empty" role="status">No persisted jobs yet.</div>
-        {% endif %}
+        {% endif %}{# ELI5: finish the conditional outcome visualization. #}
       </article>
 
       <article class="panel">
@@ -313,21 +313,21 @@
           </div>
           <span class="section-kicker">{{ workflow.steps|length }} stages</span>
         </div>
-        {% if workflow.steps and workflow.steps[0].count %}
-        {% set funnel_base = workflow.steps[0].count %}
+        {% if workflow.steps and workflow.steps[0].count %}{# ELI5: draw the funnel only when approved findings exist. #}
+        {% set funnel_base = workflow.steps[0].count %}{# ELI5: scale every handoff bar against approved findings. #}
         <div class="funnel" aria-label="Workflow funnel">
-          {% for step in workflow.steps %}
+          {% for step in workflow.steps %}{# ELI5: show each persisted workflow handoff in order. #}
           <!-- ELI5: each bar is scaled only against approved findings, never an invented conversion rate. -->
           <div class="funnel-row">
             <div class="funnel-head"><span>{{ step.label }}</span><strong>{{ step.count }}</strong></div>
             <div class="funnel-track"><span class="funnel-fill" style="width: {{ ((step.count / funnel_base) * 100)|round(1) }}%"></span></div>
           </div>
-          {% endfor %}
+          {% endfor %}{# ELI5: finish the handoff rows. #}
         </div>
         <p class="funnel-note">Counts reflect durable control-plane records.</p>
-        {% else %}
+        {% else %}{# ELI5: show a truthful empty state when no handoffs are recorded. #}
         <div class="empty" role="status">No workflow handoffs yet.</div>
-        {% endif %}
+        {% endif %}{# ELI5: finish the conditional workflow funnel. #}
       </article>
     </section>
 
@@ -335,37 +335,37 @@
     <section class="section" aria-labelledby="jobs-heading">
       <div class="section-head">
         <div><h2 id="jobs-heading">Job activity</h2><span class="section-kicker">{{ job_records|length }} persisted records</span></div>
-        {% if metrics.active %}<span class="pill">{{ metrics.active }} active</span>{% endif %}
+        {% if metrics.active %}{# ELI5: show an active badge only when unfinished jobs exist. #}<span class="pill">{{ metrics.active }} active</span>{% endif %}{# ELI5: finish the optional active badge. #}
       </div>
-      {% if job_records %}
+      {% if job_records %}{# ELI5: render the table only when persisted jobs exist. #}
       <div class="table-wrap">
         <table>
           <thead><tr><th>Job</th><th>Status</th><th>Workflow</th><th>Oracle</th><th>Candidate</th><th>Evidence</th><th></th></tr></thead>
           <tbody>
-          {% for job in job_records|reverse %}
+          {% for job in job_records|reverse %}{# ELI5: show newest job records first. #}
           <!-- ELI5: the row uses only sanitized report fields and links to a read-only detail route. -->
           <tr>
             <td><strong>#{{ job.issue_number }}</strong><span class="job-id">{{ job.id }}</span></td>
             <td><span class="status status-{{ job.status|lower|replace('_', '-') }}">{{ job.status }}</span></td>
             <td><span class="type">{{ "App contract" if job.case_kind == "application" else "Test repair" }}</span></td>
             <td>
-              {% if job.case_kind == "application" %}
+              {% if job.case_kind == "application" %}{# ELI5: application cases use their contract result. #}
               <strong>{{ job.validation.application_status or job.validation.outcome }}</strong><span class="job-id">application</span>
-              {% else %}
+              {% else %}{# ELI5: test-quality cases show their normal and mutant results. #}
               <strong>{{ job.validation.normal }} / {{ job.validation.mutant }}</strong><span class="job-id">normal / mutant</span>
-              {% endif %}
+              {% endif %}{# ELI5: finish the case-specific oracle display. #}
             </td>
             <td><code class="sha" title="{{ job.candidate_sha or 'No candidate SHA recorded' }}">{{ (job.candidate_sha or "No SHA")[:8] }}</code></td>
             <td><span class="evidence">{{ job.evidence_level }}</span></td>
             <td><a class="open-link" href="/jobs/{{ job.id }}">Open <span aria-hidden="true">→</span></a></td>
           </tr>
-          {% endfor %}
+          {% endfor %}{# ELI5: finish the job table rows. #}
           </tbody>
         </table>
       </div>
-      {% else %}
+      {% else %}{# ELI5: show a truthful empty state when no jobs are persisted. #}
       <div class="empty" role="status">No persisted jobs yet.</div>
-      {% endif %}
+      {% endif %}{# ELI5: finish the conditional job table. #}
     </section>
 
     <!-- ELI5: contracts and readiness are available on demand so the main view stays presentation-friendly. -->
@@ -373,7 +373,7 @@
       <details class="disclosure">
         <summary><span>Approved cases</span><span class="summary-meta">{{ portfolio|length }} total · {{ portfolio|selectattr("case_kind", "equalto", "application")|list|length }} app</span></summary>
         <div class="disclosure-body">
-          {% for case in portfolio %}
+          {% for case in portfolio %}{# ELI5: show every allow-listed case in the portfolio. #}
           <!-- ELI5: keep each approved contract collapsed until a reviewer requests its exact boundary. -->
           <details class="case-row">
             <summary><span>{{ case.title }}</span><span class="summary-meta">{{ "Application" if case.case_kind == "application" else "Test quality" }}</span></summary>
@@ -382,10 +382,10 @@
               <dt>Baseline</dt><dd><span class="evidence">{{ case.baseline.evidence_level }}</span> {{ case.baseline.outcome }}</dd>
               <dt>Latest</dt><dd>{{ case.latest_status }} · {{ case.latest_evidence_level }}</dd>
               <dt>Allowed paths</dt><dd class="code">{{ case.allowed_paths|join(", ") }}</dd>
-              {% if case.acceptance_test %}<dt>Harness</dt><dd class="code">{{ case.acceptance_test }}</dd>{% endif %}
+              {% if case.acceptance_test %}{# ELI5: show the contract harness only when one is registered. #}<dt>Harness</dt><dd class="code">{{ case.acceptance_test }}</dd>{% endif %}{# ELI5: finish the optional harness field. #}
             </dl>
           </details>
-          {% endfor %}
+          {% endfor %}{# ELI5: finish the approved case cards. #}
         </div>
       </details>
 
@@ -393,51 +393,51 @@
         <summary><span>Pilot readiness</span><span class="summary-meta readiness-state {{ "simulation" if readiness.state == "SIMULATION" else "" }}">{{ readiness.label }}</span></summary>
         <div class="disclosure-body">
           <ul class="gate-list">
-          {% for check in readiness.checks %}
+          {% for check in readiness.checks %}{# ELI5: show each readiness gate with its persisted state. #}
             <!-- ELI5: each row says whether one safety gate passed, blocked, or was not evaluated. -->
             <li class="gate"><span>{{ check.label }}</span><strong class="gate-{{ check.state|lower|replace('_', '-') }}">{{ check.state }}</strong></li>
-          {% endfor %}
+          {% endfor %}{# ELI5: finish the readiness gate rows. #}
           </ul>
-          {% if readiness.problems %}<p class="case-copy">Blocked by {{ readiness.problems|join(", ") }}.</p>{% endif %}
+          {% if readiness.problems %}{# ELI5: explain which safe gate names block live readiness. #}<p class="case-copy">Blocked by {{ readiness.problems|join(", ") }}.</p>{% endif %}{# ELI5: finish the optional blocked explanation. #}
         </div>
       </details>
     </section>
 
-    {% if selected_job %}
+    {% if selected_job %}{# ELI5: show detail content only when the requested job exists. #}
     <!-- ELI5: the selected job adds a compact timeline while exact artifacts stay behind one disclosure. -->
     <section class="selected" aria-labelledby="selected-heading">
       <div class="selected-head">
         <div><h2 id="selected-heading">Job #{{ selected_job.issue_number }}</h2><span class="selected-id">{{ selected_job.id }} · {{ selected_job.case_title }}</span></div>
         <div class="hero-actions"><span class="status status-{{ selected_job.status|lower|replace('_', '-') }}">{{ selected_job.status }}</span><span class="evidence">{{ selected_job.evidence_level }}</span></div>
       </div>
-      {% if selected_job.events %}
+      {% if selected_job.events %}{# ELI5: draw a timeline only when events were persisted. #}
       <ol class="timeline">
-        {% for event in selected_job.events %}
+        {% for event in selected_job.events %}{# ELI5: list each sanitized event in timeline order. #}
         <!-- ELI5: sanitized event coordinates make the handoff traceable without provider prose. -->
         <li class="timeline-row">
           <span class="timeline-dot" aria-hidden="true"></span>
           <div><span class="timeline-label">{{ event.type|replace("_", " ")|title }}</span><time class="timeline-time">{{ event.timestamp or "time pending" }}</time>
             <div class="timeline-detail">
-              {% if event.details.application %}Application: {{ event.details.application }}{% elif event.details.outcome %}Outcome: {{ event.details.outcome }}{% elif event.details.sha %}SHA: {{ event.details.sha }}{% else %}Persisted workflow event{% endif %}
-              {% if event.details.correction_count is not none %} · corrections {{ event.details.correction_count }}{% endif %}
+              {% if event.details.application %}{# ELI5: show the application contract verdict when present. #}Application: {{ event.details.application }}{% elif event.details.outcome %}{# ELI5: otherwise show the normal workflow outcome. #}Outcome: {{ event.details.outcome }}{% elif event.details.sha %}{# ELI5: otherwise show the checked artifact identity. #}SHA: {{ event.details.sha }}{% else %}{# ELI5: use a safe generic label when no verdict coordinate exists. #}Persisted workflow event{% endif %}{# ELI5: finish the event summary choice. #}
+              {% if event.details.correction_count is not none %}{# ELI5: show the correction count when the event recorded one. #} · corrections {{ event.details.correction_count }}{% endif %}{# ELI5: finish the optional correction detail. #}
             </div>
           </div>
         </li>
-        {% endfor %}
+        {% endfor %}{# ELI5: finish the sanitized timeline rows. #}
       </ol>
-      {% else %}<div class="empty">No timeline events recorded.</div>{% endif %}
+      {% else %}{# ELI5: show a truthful empty timeline state. #}<div class="empty">No timeline events recorded.</div>{% endif %}{# ELI5: finish the event conditional. #}
       <details class="technical">
         <summary>Exact artifacts and oracle</summary>
         <dl class="artifact-grid">
           <dt>Candidate SHA</dt><dd class="code">{{ selected_job.candidate_sha or "Not recorded" }}</dd>
           <dt>Validated SHA</dt><dd class="code">{{ selected_job.validated_sha or "Not recorded" }}</dd>
-          <dt>Oracle</dt><dd>{% if selected_job.case_kind == "application" %}Application: {{ selected_job.validation.application_status or selected_job.validation.outcome }}{% else %}Normal {{ selected_job.validation.normal }} · Mutant {{ selected_job.validation.mutant }}{% endif %}</dd>
-          <dt>Session</dt><dd>{% if selected_job.links.session %}<a href="{{ selected_job.links.session }}">Open session</a>{% else %}Not linked{% endif %}</dd>
-          <dt>Pull request</dt><dd>{% if selected_job.links.pull_request %}<a href="{{ selected_job.links.pull_request }}">Open PR</a>{% else %}Not linked{% endif %}</dd>
+          <dt>Oracle</dt><dd>{% if selected_job.case_kind == "application" %}{# ELI5: application jobs show their contract verdict. #}Application: {{ selected_job.validation.application_status or selected_job.validation.outcome }}{% else %}{# ELI5: test jobs show normal and mutant verdicts. #}Normal {{ selected_job.validation.normal }} · Mutant {{ selected_job.validation.mutant }}{% endif %}{# ELI5: finish the oracle display. #}</dd>
+          <dt>Session</dt><dd>{% if selected_job.links.session %}{# ELI5: show a secure provider session link when recorded. #}<a href="{{ selected_job.links.session }}">Open session</a>{% else %}{# ELI5: say when no safe session link was recorded. #}Not linked{% endif %}{# ELI5: finish the session link choice. #}</dd>
+          <dt>Pull request</dt><dd>{% if selected_job.links.pull_request %}{# ELI5: show a secure candidate PR link when recorded. #}<a href="{{ selected_job.links.pull_request }}">Open PR</a>{% else %}{# ELI5: say when no safe PR link was recorded. #}Not linked{% endif %}{# ELI5: finish the PR link choice. #}</dd>
         </dl>
       </details>
     </section>
-    {% endif %}
+    {% endif %}{# ELI5: finish the optional selected-job section. #}
 
     <!-- ELI5: the footer keeps the export schema and timestamp visible without adding another story block. -->
     <footer>Read-only report · {{ report.schema }} · generated {{ report.generated_at }}</footer>

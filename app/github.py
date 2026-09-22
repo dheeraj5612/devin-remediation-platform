@@ -18,6 +18,8 @@ from app.devin import RemoteError, SessionState, http_client, request
 # ELI5: this immutable record pins the PR number, URL, and exact commit judged by validation.
 @dataclass(frozen=True)
 class Candidate:
+    """Immutable GitHub identity for the pull request commit under evaluation."""
+
     # ELI5: retain the GitHub pull-request number for later refreshes.
     number: int
     # ELI5: retain the 40-character commit identity that validation must test.
@@ -28,6 +30,8 @@ class Candidate:
 
 # ELI5: this adapter is the only module that accepts GitHub PR metadata.
 class GitHub:
+    """Read and validate candidate pull requests from the configured fork."""
+
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         """Build a GitHub client locked to the configured repository identity."""
         # ELI5: reject malformed repository names before constructing an authenticated client.
@@ -86,8 +90,7 @@ class GitHub:
             # ELI5: keep only URLs that matched the configured repository pattern.
             if match:
                 # ELI5: keep only the numeric PR number from a trusted repository URL.
-                # ELI5: convert the captured number once for the later API lookup.
-                numbers.add(int(match[1]))
+                numbers.add(int(match[1]))  # ELI5: convert it once for the later API lookup.
         # ELI5: multiple PRs need human selection instead of arbitrary automation.
         if len(numbers) > 1:
             # ELI5: refuse to select among competing provider claims automatically.

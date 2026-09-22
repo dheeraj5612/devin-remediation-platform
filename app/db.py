@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker  # Type sessions and create sho
 from app.config import Settings
 from app.models import Base, Delivery, Event, Job, TERMINAL, TRANSITIONS, now
 
-logger = logging.getLogger("remediation")
+logger = logging.getLogger("remediation")  # ELI5: send database events to the app's shared operator log.
 
 
 class Store:
@@ -53,6 +53,7 @@ class Store:
         * A *different* delivery for the same issue -> DUPLICATE_EXECUTION, still return the existing job.
         Either way exactly one job (and one paid Devin session) exists per issue.
         """
+        # ELI5: keep the duplicate check and possible insert in one short transaction.
         with self.session() as session:
             session.execute(text("BEGIN IMMEDIATE"))  # Lock before checking so duplicate delivery handling is atomic.
             delivery = session.get(Delivery, delivery_id)  # Look for an exact GitHub redelivery first.
@@ -91,6 +92,7 @@ class Store:
     def get(self, job_id: str) -> Job:
         """Load one job from this mode or raise when it is missing or belongs to another mode."""
 
+        # ELI5: read one job through a short session, then return its non-expiring row.
         with self.session() as session:
             job = session.get(Job, job_id)  # Fetch by primary key without scanning other jobs.
             if job is None or job.mode != self.mode:
@@ -106,6 +108,7 @@ class Store:
                 Job.status.not_in(TERMINAL),
                 Job.next_poll_at <= now(),
             )
+        # ELI5: read the filtered job list without holding the session after return.
         with self.session() as session:
             return list(session.scalars(query.order_by(Job.created_at)))  # Process oldest due work first.
 
@@ -115,6 +118,7 @@ class Store:
         query = select(Event).join(Job).where(Job.mode == self.mode)  # Filter through the owning job.
         if job_id:
             query = query.where(Event.job_id == job_id)  # Avoid exposing another job's timeline.
+        # ELI5: read the ordered timeline through the same mode filter as jobs.
         with self.session() as session:
             return list(session.scalars(query.order_by(Event.id)))  # IDs preserve append order.
 
@@ -125,11 +129,13 @@ class Store:
         `values` are plain column updates (e.g. devin_session_id=...). A status change is
         checked against TRANSITIONS, so an impossible jump raises instead of corrupting state.
         """
+        # ELI5: commit status, field updates, and the matching event together.
         with self.session.begin() as session:
             job = session.get(Job, job_id)  # Load the row inside the same transaction as every update.
             if job is None or job.mode != self.mode:
                 raise KeyError(job_id)  # Refuse cross-mode or unknown updates.
             if status is not None and status != job.status:
+                # ELI5: reject a status jump that is not allowed from the current state.
                 if status not in TRANSITIONS.get(job.status, set()):
                     raise ValueError(f"Invalid transition: {job.status} -> {status}")  # Keep the state machine closed.
                 job.status = status  # Move only after the transition has been approved.
@@ -143,6 +149,7 @@ class Store:
     def defer(self, job_id: str, seconds: float) -> None:
         """Set the next polling time for a job without changing its state."""
 
+        # ELI5: commit the new polling deadline as one small update.
         with self.session.begin() as session:
             job = session.get(Job, job_id)  # The caller only defers jobs it already claimed.
             job.next_poll_at = now() + timedelta(seconds=seconds)  # Delay polling or retry backoff.

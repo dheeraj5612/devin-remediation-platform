@@ -18,6 +18,8 @@ from app.validator import Validator
 
 
 class Orchestrator:
+    """Advance durable jobs while keeping provider actions bounded and resumable."""
+
     def __init__(self, settings: Settings, store: Store, devin: Devin, github: GitHub, validator: Validator) -> None:
         """Wire the durable store and external adapters used by one resumable worker."""
         # ELI5: keep the policy, database, and provider handles together for every step.
@@ -42,29 +44,36 @@ class Orchestrator:
         job = self.store.get(job_id)
         # ELI5: terminal jobs need no more provider calls, so repeated scheduling is harmless.
         if job.status in TERMINAL:
+            # ELI5: a finished job needs no transition or provider call.
             return
         # ELI5: a stuck job eventually stops automatically and waits for a human decision.
         if job.started_at and (now() - job.started_at).total_seconds() > self.settings.job_timeout_seconds:
             # ELI5: persist the deadline result before returning so another worker cannot revive it.
             self.store.change(job.id, "DEADLINE_EXCEEDED", status="ESCALATED",
                               failure_reason="Job deadline exceeded; inspect or terminate the existing Devin session")
+            # ELI5: an escalated deadline cannot be advanced by this tick.
             return
         # ELI5: provider errors are handled separately because retries must be bounded and idempotent.
         try:
             # ELI5: queue admission becomes a running job and starts the wall-clock deadline.
             if job.status == "QUEUED":
+                # ELI5: record the queued-to-running transition before any launch decision.
                 self.store.change(job.id, "DEVIN_RUNNING", status="DEVIN_RUNNING", started_at=now())
             # ELI5: a running job without a session still needs its one launch attempt.
             elif job.status == "DEVIN_RUNNING" and not job.devin_session_id:
+                # ELI5: delegate the first provider creation through the idempotent launch gate.
                 self.launch(job)
             # ELI5: a discovered pull request moves into the independent validation phase.
             elif job.status == "PR_OPENED":
+                # ELI5: mark validation intent before evaluating the pinned candidate.
                 self.store.change(job.id, "VALIDATING", status="VALIDATING")
             # ELI5: validation runs only after the job has explicitly entered that phase.
             elif job.status == "VALIDATING":
+                # ELI5: run the independent validator only after entering VALIDATING.
                 self.evaluate(job)
             # ELI5: a failed first verdict gets the single allowed correction message.
             elif job.status == "CORRECTING" and not job.correction_acknowledged:
+                # ELI5: send the one correction only while it remains unacknowledged.
                 self.correct(job)
             else:
                 # ELI5: all remaining active states poll the same existing Devin session.
@@ -80,6 +89,7 @@ class Orchestrator:
                 # We POSTed "create session" and lost the answer. Do NOT POST again; next step reconciles by tag.
                 self.store.change(job.id, "LAUNCH_UNCERTAIN", api_failures=failures,
                                   failure_reason="Session creation uncertain; reconcile by job tag, never recreate")
+            # ELI5: retry only provider failures that the adapter marked safe to repeat.
             elif exc.retryable and failures <= 3:
                 # 429/5xx/network: back off exponentially (or as long as Retry-After says) and try again.
                 # ELI5: record the retry before delaying so recovery knows why the job is paused.
@@ -87,13 +97,13 @@ class Orchestrator:
                                   details={"category": str(exc), "attempt": failures})
                 # ELI5: wait longer after each failure, while respecting the provider's requested delay.
                 self.store.defer(job.id, max(exc.retry_after, 2 ** failures))
+                # ELI5: leave the job deferred so the next scheduled tick can retry.
                 return
             else:
                 # ELI5: after the retry budget ends, stop automated calls and mark the job failed.
                 self.store.change(job.id, "PROVIDER_ERROR", status="FAILED", api_failures=failures,
                                   failure_reason=str(exc))
         except (ValueError, OSError, KeyError):
-            # Our own misconfiguration (bad baseline, missing context, illegal transition): stop, don't retry.
             # ELI5: configuration defects are not transient provider failures, so never spend retries on them.
             self.store.change(job.id, "CONFIGURATION_ERROR", status="FAILED",
                               failure_reason="Invalid configuration, baseline evidence, or context; run make doctor")
@@ -113,8 +123,10 @@ class Orchestrator:
             session = self.devin.find_session(job.id)
             # ELI5: no matching session is unsafe to recreate automatically, so ask for inspection.
             if session is None:
+                # ELI5: escalate when reconciliation cannot prove a session exists.
                 self.store.change(job.id, "RECONCILIATION_REQUIRED", status="ESCALATED",
                                   failure_reason="No saved session after a launch intent; inspect Devin before retrying manually")
+                # ELI5: no session can be safely attached after an ambiguous launch.
                 return
         else:
             # ELI5: write the intent first so a crash cannot turn one job into two sessions.
@@ -128,18 +140,16 @@ class Orchestrator:
 
     def candidate(self, job: Job, number: int) -> Candidate:
         """Fetch a PR using the case's branch when it has a source-specific baseline."""
-        # ELI5: ask GitHub to enforce the same branch that the validator will accept.
-        # ELI5: read the target from the approved case rather than trusting a webhook field.
+        # ELI5: read the approved case branch so GitHub and validation enforce the same scope.
         branch = self.registry.cases[job.case_id].target_branch
         # ELI5: old test-quality cases retain the global branch while application cases use their pinned branch.
         return self.github.candidate(number, branch) if branch else self.github.candidate(number)
 
     def discover(self, job: Job, state: SessionState) -> Candidate | None:
         """Discover a PR while enforcing the same per-case branch used in validation."""
-        # ELI5: a PR from another base branch is not the case we approved, even if its code looks good.
-        # ELI5: look up the branch from the case registry so discovery and validation agree.
+        # ELI5: discover only a PR on the approved case branch so validation sees the same scope.
         branch = self.registry.cases[job.case_id].target_branch
-        # ELI5: preserve the adapter's legacy call shape when no case-specific branch is required.
+        # ELI5: return the allow-listed candidate shape while preserving legacy branch defaults.
         return self.github.discover(state, branch) if branch else self.github.discover(state)
 
     def poll(self, job: Job) -> None:
@@ -148,11 +158,13 @@ class Orchestrator:
         state = self.devin.get_session(job.devin_session_id)
         # ELI5: a different session identity could leak another job's work into this result.
         if state.session_id != job.devin_session_id:
+            # ELI5: never let one session's status update another job.
             raise RemoteError("Session identity mismatch")
         # ELI5: combine provider fields into the status string shown in the audit timeline.
         provider = f"{state.status}/{state.status_detail or ''}"
         # ELI5: persist only real provider changes and reset transient API failures after success.
         if provider != job.provider_status:
+            # ELI5: save provider status only after confirming this is the same session.
             self.store.change(job.id, "PROVIDER_STATE", provider_status=provider, api_failures=0)
         # ELI5: discover only an allow-listed PR tied to this job's case branch.
         candidate = self.discover(job, state)
@@ -162,12 +174,15 @@ class Orchestrator:
             self.store.change(job.id, "PR_OPENED", status="PR_OPENED", candidate_pr_number=candidate.number,
                               candidate_pr_url=candidate.url, candidate_sha=candidate.sha,
                               pr_created_at=job.pr_created_at or now(), api_failures=0)
+        # ELI5: after correction, wait when Devin still reports the old candidate.
         elif job.status == "CORRECTING" and candidate:
             return  # Same SHA after a correction: wait for a new candidate, bounded by the job deadline.
         # ELI5: a stopped or approval-blocked session without a PR needs human handling.
         elif state.status in {"error", "exit"} or state.status_detail in {"finished", "waiting_for_user", "waiting_for_approval"}:
+            # ELI5: escalate a finished or blocked session with no candidate to inspect.
             self.store.change(job.id, "NO_CANDIDATE", status="ESCALATED",
                               failure_reason="Session stopped or needs human input without a candidate PR")
+        # ELI5: inspect non-inactivity suspension as a possible budget or approval problem.
         elif state.status == "suspended" and state.status_detail not in {None, "inactivity"}:
             # ELI5: a non-inactivity suspension can be a budget or approval problem, not a retryable poll.
             self.store.change(job.id, "SESSION_SUSPENDED", status="ESCALATED",
@@ -179,6 +194,7 @@ class Orchestrator:
         count = job.stale_count + 1
         # ELI5: after three changes, stop and ask a human to inspect the unstable PR.
         if count > 3:
+            # ELI5: stop after repeated moving heads instead of validating an unstable PR.
             self.store.change(job.id, "HEAD_UNSTABLE", status="ESCALATED", failure_reason="PR head changed repeatedly")
         else:
             # ELI5: record the new SHA as needing a fresh validation pass.
@@ -191,40 +207,53 @@ class Orchestrator:
         candidate = self.candidate(job, job.candidate_pr_number)
         # ELI5: do not validate a head that changed after the previous poll.
         if candidate.sha != job.candidate_sha:
+            # ELI5: send a new head back through the bounded stale-SHA path.
             self.changed_head(job, candidate)
+            # ELI5: wait for the next validated head rather than using stale evidence.
             return
+        # ELI5: ask the validator for an independent verdict on the exact candidate.
         result = self.validator.validate(job, self.registry.cases[job.case_id], candidate)
         # ELI5: persist the application status alongside normal/mutant so recovery can explain the verdict.
         self.store.change(job.id, "EVALUATED", validation_status=result.outcome, validation=result.to_dict(),
                           details={"outcome": result.outcome, "correction_count": job.correction_count,
                                    "sha": candidate.sha, "normal": result.normal, "mutant": result.mutant,
                                    "application": result.application})
+        # ELI5: a validator-detected head change invalidates this attempt.
         if result.outcome == "STALE_SHA":
             # ELI5: a validator-reported stale head gets one more discovery pass before testing.
             self.changed_head(job, self.candidate(job, candidate.number))
+        # ELI5: a verified result still needs the final exact-head check.
         elif result.outcome == "VERIFIED":
             # Re-check the head one last time so VERIFIED always names the commit that actually passed.
             current = self.candidate(job, candidate.number)
             # ELI5: the final head check prevents a later commit from borrowing an earlier verdict.
             if current.sha != candidate.sha:
+                # ELI5: route the changed head back to bounded stale-SHA handling.
                 self.changed_head(job, current)
+                # ELI5: do not claim the old SHA passed after the PR moved.
                 return
+            # ELI5: persist the verified SHA only after all checks pass.
             self.store.change(job.id, "VERIFIED", status="VERIFIED", validated_sha=candidate.sha, failure_reason=None)
+        # ELI5: repair failures receive the single correction budget.
         elif result.repair_failure and job.correction_count == 0:
             # The repair is wrong (test fails on good code, or still misses the regression): one retry.
             self.store.change(job.id, "CORRECTING", status="CORRECTING", correction_count=1)
         else:
             # ELI5: infrastructure failures are FAILED; assessed unresolved repairs are ESCALATED.
             status = "FAILED" if result.outcome == "INFRA_ERROR" else "ESCALATED"
+            # ELI5: classify infrastructure as FAILED and unresolved repairs as ESCALATED.
             self.store.change(job.id, status, status=status, failure_reason=result.summary)
 
     def correct(self, job: Job) -> None:
         """Send the single correction message into the same session (same lost-reply guard as `launch`)."""
         # ELI5: a saved correction intent means the previous message may already have arrived.
         if job.correction_requested:
+            # ELI5: escalate instead of resending when correction delivery is uncertain.
             self.store.change(job.id, "CORRECTION_UNCERTAIN", status="ESCALATED",
                               failure_reason="Correction acknowledgement missing; inspect the same session, do not resend automatically")
+            # ELI5: no second correction is safe without human reconciliation.
             return
+        # ELI5: record correction intent before sending the provider message.
         self.store.change(job.id, "CORRECTION_REQUESTED", correction_requested=True)
         # ELI5: tell Devin the exact verdict and remind it that the evaluator is trusted and off-limits.
         message = (

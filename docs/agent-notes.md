@@ -23,5 +23,12 @@
 
 ## Follow up
 
-- Live proof remains pending. Keep the ignored `.env` protected and keep `ENABLE_LIVE=false` until local gates, current baseline evidence, and the disposable validation environment pass.
-- The oracle result is local validator evidence only. It is not a Devin session or candidate PR result.
+- Fresh live application proof is recorded in [`evidence/live-application.json`](../evidence/live-application.json); it covers only the malformed-YAML case and does not claim a merged change, full Superset suite, customer impact, or cost savings.
+- Keep the ignored `.env` protected and keep `ENABLE_LIVE=false` after the completed pilot unless a new run is explicitly approved with current gates.
+- The source comparator remains local validator evidence. It is separate from the live Devin candidate result.
+
+## Comment coverage integration
+
+- The annotation pass is comment/docstring-only from source baseline `fb0b150df3fa09376a24c2642102aab1ee2e5c7b`; historical live-proof files and fingerprints are unchanged.
+- All 18 maintained Python files match their source AST after stripping docstrings. The semantic audit covers 1,059/1,059 substantive statements with an inline or adjacent explanation, excluding imports, punctuation-only structure, docstring expressions, and `pass`; all 146 classes/functions/methods have summaries.
+- Jinja comment stripping and the same fixture render are unchanged. Python compilation, `ruff check .`, and whitespace checks pass. The existing 133-test result remains applicable because this branch changes documentation only.

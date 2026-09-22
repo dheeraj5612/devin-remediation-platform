@@ -39,7 +39,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     """Create the one report dictionary shared by collection, controls, and test hooks."""
-    # Everything we learn during the run accumulates here and is dumped at the end.
     # ELI5: start empty lists/maps plus runtime versions so a later reader can audit the run.
     config._drp = {"collected": [], "reports": [], "controls": {}, "provenance": {},
                    "environment": {"python": sys.version, "pytest": version("pytest")}}
@@ -82,6 +81,7 @@ def histogram_control(monkeypatch: pytest.MonkeyPatch, mutant: bool) -> None:
     # Positive control: truly invalid strings must raise on clean code and be accepted under the mutant.
     # ELI5: prepare two deliberately invalid values for the positive control.
     invalid = DataFrame({"value": ["not-a-number", "also-invalid"]})
+    # ELI5: choose the historical fallback behavior only for the mutant phase.
     if mutant:
         # ELI5: the mutant must demonstrate the old silent coercion behavior.
         result = module.histogram(invalid, "value", [], 2)
@@ -132,6 +132,8 @@ def schema_control(monkeypatch: pytest.MonkeyPatch, mutant: bool) -> None:
 
     # ELI5: make a minimal schema that exercises the mixin's URI construction hook.
     class ProbeSchema(DatabaseParametersSchemaMixin, Schema):
+        """Expose only the URI field needed to test the missing-engine contract."""
+
         # ELI5: include the output field so the loaded result exposes the URI decision.
         sqlalchemy_uri = fields.String()
 
@@ -139,6 +141,7 @@ def schema_control(monkeypatch: pytest.MonkeyPatch, mutant: bool) -> None:
     payload = {"configuration_method": ConfigurationMethod.DYNAMIC_FORM,
                "parameters": {"username": "username", "password": "password", "host": "localhost",
                               "port": 12345, "database": "dbname"}}
+    # ELI5: choose the historical fallback behavior only for the mutant phase.
     if mutant:
         # ELI5: the mutant must expose its incorrect sqlite fallback.
         assert ProbeSchema().load(payload)["sqlalchemy_uri"] == "sqlite://"
@@ -172,7 +175,7 @@ def registered_challenge(request: pytest.FixtureRequest, monkeypatch: pytest.Mon
     origin = Path(module.__file__).resolve()
     # ELI5: reject installed modules because validation must test the detached candidate SHA.
     if not origin.is_relative_to(Path(request.config.rootpath).resolve()):
-        # A globally installed Superset would make the worktree checkout meaningless.
+        # ELI5: do not claim provenance when Python imported code outside the candidate checkout.
         raise RuntimeError("Validation imported production code outside the candidate worktree")
     # ELI5: record the exact production file imported for this test node.
     request.config._drp["provenance"][request.node.nodeid] = str(origin)
@@ -191,6 +194,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo) -> Gener
     report = result.get_result()
     # ELI5: start false and mark only genuine assertion failures in the test call.
     assertion = False
+    # ELI5: inspect exceptions only for failures raised during the test call itself.
     if call.excinfo and report.when == "call":
         # ELI5: inspect the raised exception only for call-phase failures.
         error = call.excinfo.value
