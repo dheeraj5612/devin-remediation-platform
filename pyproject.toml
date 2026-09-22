@@ -20,7 +20,8 @@ dev = ["pytest==9.0.2", "ruff==0.15.0"]
 include = ["app*", "evals*"]
 
 [tool.setuptools.package-data]
-app = ["templates/*.html"]
+# The dated archive is a packaged copy; a regression test guards exact source parity.
+app = ["templates/*.html", "static/*", "archive/*.json"]
 evals = ["*.yaml"]
 
 [tool.pytest.ini_options]

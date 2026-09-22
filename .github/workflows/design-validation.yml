@@ -1,0 +1,58 @@
+# Real browser review uses synthetic providers and no repository write permission.
+name: Product UI review
+on:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ui-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: fb0b150df3fa09376a24c2642102aab1ee2e5c7b
+          path: .review-baseline
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned test tools
+        run: |
+          python -m pip install --constraint constraints.txt '.[dev]'
+          python -m pip install -r requirements-ui.txt
+          python -m playwright install --with-deps ${{ matrix.browser }}
+          npm install --no-save --prefix /tmp/proofline-a11y axe-core@4.10.3
+      - name: Smoke-test the installed wheel
+        if: matrix.browser == 'chromium'
+        run: |
+          python -m pip wheel --no-deps . --wheel-dir /tmp/proofline-wheel
+          mkdir -p /tmp/proofline-ui-review
+          python scripts/check_wheel.py /tmp/proofline-wheel/*.whl | tee /tmp/proofline-ui-review/wheel-check.log
+      - name: Review rendered application
+        env:
+          REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p /tmp/proofline-ui-review
+          git rev-parse HEAD > /tmp/proofline-ui-review/source-commit.txt
+          printf '%s\n' "$REVIEW_HEAD" > /tmp/proofline-ui-review/review-head.txt
+          python scripts/ui_review.py --axe /tmp/proofline-a11y/node_modules/axe-core/axe.min.js --baseline .review-baseline --browser ${{ matrix.browser }} --output /tmp/proofline-ui-review
+      - name: Upload real screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proofline-ui-review-${{ matrix.browser }}
+          path: /tmp/proofline-ui-review
+          retention-days: 14

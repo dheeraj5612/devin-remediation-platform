@@ -12,3 +12,7 @@ data/
 *.sqlite*
 dist/
 build/
+
+# Optional review-only checkouts and artifacts.
+.review-baseline/
+ui-review/

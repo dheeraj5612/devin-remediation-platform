@@ -32,7 +32,7 @@ pip install -c constraints.txt -e '.[dev]'
 make demo
 ```
 
-Open `http://127.0.0.1:8000`. No `.env`, credentials, GitHub writes, or Devin calls are needed. `make demo` resets **only** `data/simulation`, signs real webhook requests, and exercises the real persistence/orchestration code with fake external adapters. It covers first-pass verification, correction recovery, application acceptance and rejection, escalation, duplicate delivery, and worker restart with a saved session.
+Open `http://127.0.0.1:8000` for the product overview, or `http://127.0.0.1:8000/dashboard` for the workbench. No `.env`, credentials, GitHub writes, or Devin calls are needed. `make demo` resets **only** `data/simulation`, signs real webhook requests, and exercises the real persistence/orchestration code with fake external adapters. It covers first-pass verification, correction recovery, application acceptance and rejection, escalation, duplicate delivery, and worker restart with a saved session.
 
 The `SIMULATION` badge is permanent. Synthetic outcomes and local execution times are not live remediation evidence. To run without starting the server:
 
@@ -44,11 +44,13 @@ make test
 make lint
 ```
 
-## Evidence-first dashboard
+## Proofline: the evidence workbench
 
-The dashboard at `/` and the download at `/report.json` are two views of the same read-only report model in `app/report.py`. The report includes the execution mode, an explicit simulation truth statement, KPI denominators, the event-to-oracle workflow, registered case contracts, readiness gates, persisted job status, exact candidate and validated SHAs, validation outcomes, and event timelines. A report link is not treated as proof of a merge or a live repair.
+The workbench at `/dashboard` and the download at `/report.json` are two views of the same read-only report model in `app/report.py`. The report includes the execution mode, an explicit simulation truth statement, KPI denominators, the event-to-oracle workflow, registered case contracts, readiness gates, persisted job status, exact candidate and validated SHAs, validation outcomes, and event timelines. A report link is not treated as proof of a merge or a live repair.
 
-The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
+The public overview at `/` links to a separately dated archive at `/evidence`; archived success is never added to workspace metrics. `/cases` exposes contract scope and readiness, and `/jobs/{id}` puts the verdict, exact-SHA proof comparison, and event trail first. Search, workflow/state filters, ordering, and 20-row pagination use normal GET requests. The browser cannot enqueue work.
+
+The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists in the underlying report. The UI additionally warns when the candidate and validated SHA do not match; it does not endorse an unlinked verified state. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
 
 For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). It covers what problem the platform solves, how the signed event and independent oracle fit together, why Devin is used for investigation, and the gates for a one-finding pilot. The script distinguishes deterministic simulation evidence from fields available only after a configured live run.
 
@@ -147,7 +149,7 @@ The dashboard and `/metrics` JSON are calculated from persisted records: attempt
 
 The repository now records three separate evidence layers. The six-job dashboard run is credential-free `SIMULATION` evidence. [`evidence/application-oracle.json`](evidence/application-oracle.json) is the local source comparator for the pinned baseline and known reference. [`evidence/live-application.json`](evidence/live-application.json) records one fresh live Devin application run and its independent candidate validation.
 
-The control-plane suite contains 133 passing tests, including real SQLite concurrency, signed HTTP requests, mock v3 requests, restart/ambiguous-response handling, local Git scope/worktree operations, trusted application-oracle controls, subprocess timeout handling, metrics, and the full simulation. These ran with Python 3.14.7 in an isolated virtual environment. HTTP health/metrics, evidence export, escaping, and dashboard rendering checks passed.
+The pre-redesign control-plane baseline contained 133 passing tests, including real SQLite concurrency, signed HTTP requests, mock v3 requests, restart/ambiguous-response handling, local Git scope/worktree operations, trusted application-oracle controls, subprocess timeout handling, metrics, and the full simulation. These ran with Python 3.14.7 in an isolated virtual environment. HTTP health/metrics, evidence export, escaping, and dashboard rendering checks passed.
 
 The pinned source comparator recorded baseline `dedfe23...` as `REGRESSION` and reference `22ec1f...` as `PASS`, both with trusted provenance. The fresh live record used one Devin session, produced candidate PR #8 at the validated SHA, and passed the application oracle with zero corrections. It covers the malformed-YAML application contract only; it does not claim the full Superset suite, a merge, customer impact, or ACU cost or savings. The provider terminal snapshot reports 0.0 ACUs, labelled as provider-reported rather than an independent cost result. Local source checks used Python 3.14.7, while GitHub Verify ran the control-plane suite under Python 3.12.14. Docker build/start and the full test-quality Superset evaluation were not executed. Ruff 0.16.8 passed against the checkout. The live record contains no provider credential or private local path.
 
@@ -160,3 +162,21 @@ This is a targeted take-home, not a general mutation-testing service. Two select
 ## Five-minute walkthrough
 
 Use [`docs/demo-script.md`](docs/demo-script.md) for the five-minute presentation. Start at `app/main.py` for signed admission, `app/orchestrator.py` for durable intent and bounded correction, and `app/validator.py` for independent test-quality or application acceptance. Finish on the simulation dashboard and explain the evidence badges, denominators, restart event, and the difference between simulation and a measured live result.
+
+
+### Design and browser review
+
+[`DESIGN.md`](DESIGN.md) records the selected system, three concept directions, evidence semantics, and interaction rules. [`docs/design/concepts.html`](docs/design/concepts.html) contains the composition studies. The two refinement cycles and validation scope are recorded in [`docs/design/CRITIQUE.md`](docs/design/CRITIQUE.md).
+
+The interface adds no JavaScript framework, remote fonts, or runtime Node dependencies. CSS, progressive JavaScript, the original SVG wordmark, and favicon assets are served locally under a strict Content Security Policy. No-JavaScript filtering and deep links remain functional. Operational routes are `noindex` and uncached, **not authenticated**; keep them private as described above.
+
+Optional real-browser review (Chromium, isolated synthetic fixtures, no paid calls):
+
+```sh
+python -m pip install -r requirements-ui.txt
+python -m playwright install --with-deps chromium
+npm install --no-save --prefix /tmp/proofline-a11y axe-core@4.10.3
+python scripts/ui_review.py --axe /tmp/proofline-a11y/node_modules/axe-core/axe.min.js --output /tmp/proofline-ui-review
+```
+
+The `Product UI review` workflow runs the same checks and uploads desktop/mobile screenshots, the actual downloaded report, and a machine-readable validation log. It also checks the pinned pre-redesign checkout for before screenshots. Test tools are optional and are not added to the production Docker image.

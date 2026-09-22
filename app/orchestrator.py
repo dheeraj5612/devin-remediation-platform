@@ -195,11 +195,12 @@ class Orchestrator:
         # ELI5: after three changes, stop and ask a human to inspect the unstable PR.
         if count > 3:
             # ELI5: stop after repeated moving heads instead of validating an unstable PR.
-            self.store.change(job.id, "HEAD_UNSTABLE", status="ESCALATED", failure_reason="PR head changed repeatedly")
+            self.store.change(job.id, "HEAD_UNSTABLE", status="ESCALATED", validation_status="STALE_SHA",
+                              validation=None, validated_sha=None, failure_reason="PR head changed repeatedly")
         else:
             # ELI5: record the new SHA as needing a fresh validation pass.
             self.store.change(job.id, "STALE_SHA", status="PR_OPENED", candidate_sha=candidate.sha,
-                              stale_count=count, validation_status="STALE_SHA")
+                              stale_count=count, validation_status="STALE_SHA", validation=None, validated_sha=None)
 
     def evaluate(self, job: Job) -> None:
         """Run the independent validator on the pinned SHA and act on its verdict."""

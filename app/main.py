@@ -16,17 +16,17 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app.cases import Registry
-from app.config import ROOT, Settings
+from app.config import Settings
 from app.db import Store
 from app.devin import launch_preflight
 from app.metrics import metrics
 from app.report import build_report
+from app.views import install_views
 
 # ELI5: reject unusually large webhook bodies before they consume memory.
 MAX_PAYLOAD_BYTES = 256 * 1024
@@ -124,8 +124,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Devin Remediation Platform", lifespan=lifespan)
     # ELI5: expose the read-only dependencies to tests and small local integrations.
     app.state.store, app.state.settings = store, settings
-    # ELI5: render one checked-in template instead of assembling customer HTML in route code.
-    templates = Jinja2Templates(directory=str(ROOT / "app/templates"))
 
     # ELI5: this middleware adds the same browser safety headers to every route.
     @app.middleware("http")
@@ -137,8 +135,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         # ELI5: keep URLs from this page out of another site's referrer header.
         response.headers["Referrer-Policy"] = "no-referrer"
-        # ELI5: allow this page's own content and inline CSS, while blocking framing and foreign scripts.
-        response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'none'"
+        # Local assets only: no inline scripts, foreign scripts, framing, or form targets.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        )
+        if not request.url.path.startswith("/static/") and request.url.path != "/":
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+            response.headers["Cache-Control"] = "no-store"
         # ELI5: return the protected response unchanged apart from its guardrail headers.
         return response
 
@@ -158,63 +162,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # ELI5: calculate counters from persisted jobs and events without starting work.
         return {"mode": settings.mode, **metrics(store)}
 
-    # ELI5: this helper renders the shared snapshot for either the portfolio or one job.
-    def render(request: Request, selected: str | None = None) -> Response:
-        """Dashboard page; with `selected`, also the event timeline for that job."""
-        # ELI5: normalize jobs, events, case contracts, and metrics once for this page.
-        report = build_report(settings, store, registry)
-        # ELI5: reuse the report's job records so the table and selected detail cannot disagree.
-        jobs = report["jobs"]
-        # ELI5: reject a requested job before trying to render details for it.
-        if selected and not any(job["id"] == selected for job in report["jobs"]):
-            # ELI5: a made-up job ID gets a clear not-found response and cannot select another job.
-            raise HTTPException(404, "Unknown job")
-        # ELI5: select one normalized record, or no record for the portfolio page.
-        selected_job = next((job for job in report["jobs"] if job["id"] == selected), None)
-        # ELI5: pass both compatibility fields and the new report fields to the server-rendered view.
-        return templates.TemplateResponse(request=request, name="dashboard.html", context={
-            # ELI5: show whether this page came from simulation or live control-plane storage.
-            "mode": settings.mode,
-            "jobs": jobs,  # Keep the original context available to small local integrations.
-            # ELI5: preserve the approved registry for integrations that still inspect case objects.
-            "cases": registry.cases,
-            # ELI5: use one metric snapshot for every KPI on the page.
-            "metrics": report["metrics"],
-            # ELI5: selected details come from the same snapshot as the table and JSON export.
-            "events": selected_job["events"] if selected_job else [],
-            # ELI5: keep the selected ID so links and template state remain stable.
-            "selected": selected,
-            # ELI5: give the detail panel the normalized case-aware job record.
-            "selected_job": selected_job,
-            # ELI5: keep the original baseline lookup for small integrations.
-            "evidence": {case["id"]: case["baseline"] for case in report["cases"]},
-            # ELI5: expose configuration status without exposing credentials.
-            "live_enabled": settings.enable_live,
-            # ELI5: provide the complete export-shaped report for the footer and future views.
-            "report": report,
-            # ELI5: case cards use the same case records as the downloadable report.
-            "portfolio": report["cases"],
-            # ELI5: the evidence table uses the same job rows as the selected detail.
-            "job_records": report["jobs"],
-            # ELI5: the funnel is made only from persisted workflow handoffs.
-            "workflow": report["workflow"],
-            # ELI5: readiness explains live gates without pretending simulation passed them.
-            "readiness": report["readiness"],
-        })
-
-    # ELI5: this route renders the portfolio view for the browser.
-    @app.get("/", response_class=HTMLResponse)
-    def dashboard(request: Request) -> Response:
-        """Render the portfolio page from one normalized report snapshot."""
-        # ELI5: the homepage is only a view; worker state changes happen elsewhere.
-        return render(request)
-
-    # ELI5: this route renders one persisted job's details.
-    @app.get("/jobs/{job_id}", response_class=HTMLResponse)
-    def details(request: Request, job_id: str) -> Response:
-        """Render one job's evidence and timeline using the same report model."""
-        # ELI5: selecting a job changes what is shown, not what is executed.
-        return render(request, job_id)
+    # ELI5: product pages only read evidence; the signed webhook remains the admission path.
+    install_views(app, settings, store, registry)
 
     # ELI5: this route downloads the same snapshot shown in the dashboard.
     @app.get("/report.json")
