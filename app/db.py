@@ -6,14 +6,14 @@ a short transaction, so a crash between two steps leaves a consistent record
 the worker can resume from.
 """
 
-import json
-import logging
-from datetime import timedelta
-from sqlite3 import Connection
-from typing import Any
+import json  # Serialize event details for structured logs.
+import logging  # Keep database events visible without printing secrets.
+from datetime import timedelta  # Calculate future polling times.
+from sqlite3 import Connection  # Type the SQLite connection used by SQLAlchemy hooks.
+from typing import Any  # Accept provider-specific event detail values.
 
-from sqlalchemy import create_engine, event, select, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, event, select, text  # Build and query the durable SQLite store.
+from sqlalchemy.orm import Session, sessionmaker  # Type sessions and create short-lived ones.
 
 from app.config import Settings
 from app.models import Base, Delivery, Event, Job, TERMINAL, TRANSITIONS, now
@@ -22,19 +22,28 @@ logger = logging.getLogger("remediation")
 
 
 class Store:
+    """Persist jobs, webhook deliveries, and their append-only event timelines."""
+
     def __init__(self, settings: Settings) -> None:
-        settings.storage.mkdir(parents=True, exist_ok=True)
+        """Create a mode-isolated engine and configure SQLite for one worker plus readers."""
+
+        settings.storage.mkdir(parents=True, exist_ok=True)  # Make the selected evidence directory first.
         self.mode = settings.mode  # every query is filtered by mode; LIVE never sees SIMULATION rows
-        self.engine = create_engine(settings.database_url, connect_args={"timeout": 10, "check_same_thread": False})
+        self.engine = create_engine(  # Open the configured database without sharing connections across threads.
+            settings.database_url,
+            connect_args={"timeout": 10, "check_same_thread": False},
+        )
 
         @event.listens_for(self.engine, "connect")
         def configure(connection: Connection, _: Any) -> None:
-            connection.execute("PRAGMA foreign_keys=ON")
-            connection.execute("PRAGMA busy_timeout=10000")  # wait instead of erroring when the worker holds a lock
-            connection.execute("PRAGMA journal_mode=WAL")  # readers (dashboard) don't block the writer (worker)
+            """Set SQLite connection safeguards once whenever SQLAlchemy opens a connection."""
 
-        Base.metadata.create_all(self.engine)
-        self.session = sessionmaker(self.engine, expire_on_commit=False)
+            connection.execute("PRAGMA foreign_keys=ON")  # Reject events that reference missing jobs.
+            connection.execute("PRAGMA busy_timeout=10000")  # Wait instead of failing during a worker lock.
+            connection.execute("PRAGMA journal_mode=WAL")  # Let dashboard reads overlap worker writes.
+
+        Base.metadata.create_all(self.engine)  # Create missing tables without rewriting existing evidence.
+        self.session = sessionmaker(self.engine, expire_on_commit=False)  # Keep returned rows usable after commit.
 
     def enqueue(self, delivery_id: str, repository: str, issue: int, case_id: str) -> tuple[Job, bool]:
         """Turn an accepted webhook into a job. Returns (job, was_duplicate).
@@ -45,51 +54,69 @@ class Store:
         Either way exactly one job (and one paid Devin session) exists per issue.
         """
         with self.session() as session:
-            session.execute(text("BEGIN IMMEDIATE"))  # take the write lock now: check-then-insert must be atomic
-            delivery = session.get(Delivery, delivery_id)
+            session.execute(text("BEGIN IMMEDIATE"))  # Lock before checking so duplicate delivery handling is atomic.
+            delivery = session.get(Delivery, delivery_id)  # Look for an exact GitHub redelivery first.
             if delivery:
-                delivery.duplicate_count += 1
-                job = session.get(Job, delivery.job_id)
-                self._event(session, job, "DUPLICATE_DELIVERY")
-                session.commit()
-                return job, True
-            job = session.scalar(select(Job).where(
-                Job.mode == self.mode, Job.repository == repository, Job.issue_number == issue, Job.generation == 1,
-            ))
-            duplicate = job is not None
+                delivery.duplicate_count += 1  # Preserve how often GitHub retried the same delivery.
+                job = session.get(Job, delivery.job_id)  # Reuse the original job rather than creating paid work.
+                self._event(session, job, "DUPLICATE_DELIVERY")  # Make the duplicate visible on the timeline.
+                session.commit()  # Finish the short transaction before returning the existing job.
+                return job, True  # Tell the caller this request did not create new work.
+            job = session.scalar(  # Find an existing job for the same issue in this mode.
+                select(Job).where(
+                    Job.mode == self.mode,
+                    Job.repository == repository,
+                    Job.issue_number == issue,
+                    Job.generation == 1,
+                )
+            )
+            duplicate = job is not None  # A different delivery can still refer to the same issue.
             if job is None:
-                job = Job(mode=self.mode, repository=repository, issue_number=issue, case_id=case_id,
-                          github_delivery_id=delivery_id)
-                session.add(job)
-                session.flush()  # assigns job.id so the event row can reference it
-                self._event(session, job, "QUEUED")
+                job = Job(  # Store the admission decision before the worker spends provider credits.
+                    mode=self.mode,
+                    repository=repository,
+                    issue_number=issue,
+                    case_id=case_id,
+                    github_delivery_id=delivery_id,
+                )
+                session.add(job)  # Add the new job to the current transaction.
+                session.flush()  # Assign job.id so the first event can reference it.
+                self._event(session, job, "QUEUED")  # Record the durable handoff to the worker.
             else:
-                self._event(session, job, "DUPLICATE_EXECUTION")
-            session.add(Delivery(id=delivery_id, mode=self.mode, job_id=job.id))
-            session.commit()
-            return job, duplicate
+                self._event(session, job, "DUPLICATE_EXECUTION")  # Explain why this delivery did not enqueue again.
+            session.add(Delivery(id=delivery_id, mode=self.mode, job_id=job.id))  # Remember every delivery ID.
+            session.commit()  # Make the job and delivery visible together.
+            return job, duplicate  # Return the durable row and whether it already existed.
 
     def get(self, job_id: str) -> Job:
+        """Load one job from this mode or raise when it is missing or belongs to another mode."""
+
         with self.session() as session:
-            job = session.get(Job, job_id)
+            job = session.get(Job, job_id)  # Fetch by primary key without scanning other jobs.
             if job is None or job.mode != self.mode:
-                raise KeyError(job_id)
-            return job
+                raise KeyError(job_id)  # Keep simulation and live records isolated at the API boundary.
+            return job  # The session does not expire returned objects after it closes.
 
     def jobs(self, active_only: bool = False) -> list[Job]:
-        """All jobs in this mode; `active_only` = not finished and due for another poll."""
-        query = select(Job).where(Job.mode == self.mode)
+        """Return this mode's jobs, optionally limited to unfinished jobs due for polling."""
+
+        query = select(Job).where(Job.mode == self.mode)  # Never mix live and simulation dashboards.
         if active_only:
-            query = query.where(Job.status.not_in(TERMINAL), Job.next_poll_at <= now())
+            query = query.where(  # The worker only needs jobs that can act and are not delayed.
+                Job.status.not_in(TERMINAL),
+                Job.next_poll_at <= now(),
+            )
         with self.session() as session:
-            return list(session.scalars(query.order_by(Job.created_at)))
+            return list(session.scalars(query.order_by(Job.created_at)))  # Process oldest due work first.
 
     def events(self, job_id: str | None = None) -> list[Event]:
-        query = select(Event).join(Job).where(Job.mode == self.mode)
+        """Return this mode's event timeline, optionally narrowed to one job."""
+
+        query = select(Event).join(Job).where(Job.mode == self.mode)  # Filter through the owning job.
         if job_id:
-            query = query.where(Event.job_id == job_id)
+            query = query.where(Event.job_id == job_id)  # Avoid exposing another job's timeline.
         with self.session() as session:
-            return list(session.scalars(query.order_by(Event.id)))
+            return list(session.scalars(query.order_by(Event.id)))  # IDs preserve append order.
 
     def change(self, job_id: str, event_type: str, *, status: str | None = None,
                details: dict | None = None, **values: Any) -> Job:
@@ -99,27 +126,30 @@ class Store:
         checked against TRANSITIONS, so an impossible jump raises instead of corrupting state.
         """
         with self.session.begin() as session:
-            job = session.get(Job, job_id)
+            job = session.get(Job, job_id)  # Load the row inside the same transaction as every update.
             if job is None or job.mode != self.mode:
-                raise KeyError(job_id)
+                raise KeyError(job_id)  # Refuse cross-mode or unknown updates.
             if status is not None and status != job.status:
                 if status not in TRANSITIONS.get(job.status, set()):
-                    raise ValueError(f"Invalid transition: {job.status} -> {status}")
-                job.status = status
+                    raise ValueError(f"Invalid transition: {job.status} -> {status}")  # Keep the state machine closed.
+                job.status = status  # Move only after the transition has been approved.
                 if status in TERMINAL:
-                    job.completed_at = now()
+                    job.completed_at = now()  # Terminal jobs receive one completion timestamp.
             for key, value in values.items():
-                setattr(job, key, value)
-            self._event(session, job, event_type, details)
-        return job
+                setattr(job, key, value)  # Apply ordinary column updates requested by the orchestrator.
+            self._event(session, job, event_type, details)  # Record the event beside the state change.
+        return job  # Return the committed object for callers that need its current values.
 
     def defer(self, job_id: str, seconds: float) -> None:
-        """Don't look at this job again for `seconds` (polling interval or retry backoff)."""
+        """Set the next polling time for a job without changing its state."""
+
         with self.session.begin() as session:
-            job = session.get(Job, job_id)
-            job.next_poll_at = now() + timedelta(seconds=seconds)
+            job = session.get(Job, job_id)  # The caller only defers jobs it already claimed.
+            job.next_poll_at = now() + timedelta(seconds=seconds)  # Delay polling or retry backoff.
 
     @staticmethod
     def _event(session: Session, job: Job, event_type: str, details: dict | None = None) -> None:
-        session.add(Event(job_id=job.id, event_type=event_type, details=details or {}))
-        logger.info(json.dumps({"job_id": job.id, "event": event_type, "mode": job.mode}))  # one JSON line per event
+        """Append an event row and emit a small structured log line for operators."""
+
+        session.add(Event(job_id=job.id, event_type=event_type, details=details or {}))  # Keep full details in SQLite.
+        logger.info(json.dumps({"job_id": job.id, "event": event_type, "mode": job.mode}))  # Log identifiers only.

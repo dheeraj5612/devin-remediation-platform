@@ -5,17 +5,23 @@ directly; everything asks a `Settings` object instead, so a test can hand in
 fake values and the live worker can refuse to start when something is missing.
 """
 
-from pathlib import Path
-from typing import Literal
+from pathlib import Path  # Build stable paths from the repository and data directory.
+from typing import Literal  # Restrict the two supported operating modes.
 
-from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr  # Validate settings and keep credentials masked.
+from pydantic_settings import BaseSettings, SettingsConfigDict  # Read typed values from `.env`.
 
 # Repository root (the folder containing `app/`, `evals/`, `README.md`).
 ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
+    """Typed control panel for simulation and live remediation runs.
+
+    Inputs come from defaults, environment variables, or `.env`; properties derive paths,
+    while :meth:`live_errors` explains which safety gates still block paid execution.
+    """
+
     # Read `.env` if present; ignore unrelated variables instead of failing.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -49,25 +55,34 @@ class Settings(BaseSettings):
 
     @property
     def storage(self) -> Path:
+        """Return the mode-specific directory where durable evidence is stored."""
+
         # LIVE and SIMULATION never share a folder, so a demo can't pollute real evidence.
         return self.data_dir.resolve() / self.mode.lower()
 
     @property
     def database_url(self) -> str:
+        """Return the SQLite URL used by this mode's job store."""
+
         return f"sqlite:///{self.storage / 'jobs.sqlite'}"
 
     def live_errors(self) -> list[str]:
-        """Return everything still missing before live (paid) execution is allowed. Empty list == ready."""
-        missing = []
+        """Return the safety gates that still block live, paid execution.
+
+        An empty list means configuration is complete enough for the caller to continue.
+        The method reports names and policy requirements only; it never exposes secret values.
+        """
+
+        missing = []  # Collect every problem so the operator can fix them together.
         for name in ("github_repository", "github_repository_id", "github_token", "github_webhook_secret",
                      "devin_api_key", "devin_org_id"):
-            value = getattr(self, name)
+            value = getattr(self, name)  # Read one setting without duplicating the credential checks.
             if not (value.get_secret_value() if isinstance(value, SecretStr) else value):
-                missing.append(name.upper())
+                missing.append(name.upper())  # Report the setting name, never its value.
         if not self.enable_live:
-            missing.append("ENABLE_LIVE=true")
+            missing.append("ENABLE_LIVE=true")  # Require an explicit second confirmation before spending.
         if self.github_repository.lower() == "apache/superset":
-            missing.append("a dedicated fork, not Apache upstream")  # never point the bot at upstream
+            missing.append("a dedicated fork, not Apache upstream")  # Never point the bot at upstream.
         if not self.allow_local_validation:
-            missing.append("ALLOW_LOCAL_VALIDATION=true (dedicated disposable environment)")
-        return missing
+            missing.append("ALLOW_LOCAL_VALIDATION=true (dedicated disposable environment)")  # Candidate code runs locally.
+        return missing  # The caller decides whether to stop, while preserving all diagnostics.

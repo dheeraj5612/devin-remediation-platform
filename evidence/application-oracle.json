@@ -1,0 +1,32 @@
+{
+  "schema": "application-oracle-evidence-v1",
+  "generated_at_utc": "2026-09-22T01:35:46Z",
+  "case_id": "import-unparseable-yaml",
+  "case_kind": "application",
+  "production_path": "superset/commands/importers/v1/utils.py",
+  "oracle_path": "evals/application_cases/import_unparseable_yaml.py",
+  "superset_checkout_revision": "5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e",
+  "python": "3.11.14",
+  "harness_fingerprint": "d71498b04c327b52a1f2e2412c76059f59dcfaa6080f12620b94641261829aac",
+  "pinned_baseline": {
+    "sha": "dedfe23a805151decca6deaf15b032e040e42e82",
+    "oracle_status": "REGRESSION",
+    "baseline_proof": "CONFIRMED",
+    "provenance": true
+  },
+  "known_reference_fix": {
+    "sha": "22ec1f598808859c42dccff21665786224127122",
+    "oracle_status": "PASS",
+    "provenance": true,
+    "is_new_devin_run": false
+  },
+  "reproduction": {
+    "command": "Run Validator(settings).baseline(case) and Validator(settings).run_application(case, sha) from a Python 3.11 process configured with the disposable Superset checkout and interpreter.",
+    "environment": "disposable local Superset checkout with Python 3.11 and allow_local_validation=true",
+    "network_or_provider_calls": false
+  },
+  "limitations": [
+    "The PASS result is a source-backed known reference fix, not a live Devin result.",
+    "No Devin API session or remote mutation was performed for this evidence."
+  ]
+}
