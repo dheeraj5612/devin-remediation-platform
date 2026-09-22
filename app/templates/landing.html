@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="landing-hero wrap">
+  <div class="hero-copy">
+    <p class="eyebrow"><span class="crosshair" aria-hidden="true">+</span> Autonomous repair. Independent proof.</p>
+    <h1>A repair is<br>a claim.<br><span class="blue">Show the proof.</span></h1>
+    <p class="hero-lede">From a GitHub finding to a Devin candidate.<br>Independently checked. Always yours to review.</p>
+    <div class="actions"><a class="button primary" href="/dashboard">Open workbench <span aria-hidden="true">↗</span></a><a class="text-link" href="/evidence">Inspect a recorded run <span aria-hidden="true">→</span></a></div>
+    <p class="micro">No automatic merges. No paid calls from this interface.</p>
+  </div>
+  <div class="hero-proof">
+    <div class="proof-topline"><span class="eyebrow">The proof line</span><span class="mono">01 → 02</span></div>
+    <p class="proof-title">Same contract.<br>Different outcome.</p>
+    <div class="trace-illustration" aria-hidden="true"><span class="trace-origin">−</span><span class="trace-rule"></span><span class="trace-gate">/</span><span class="trace-rule final-rule"></span><span class="trace-end">✓</span></div>
+    {% if archive %}
+    <div class="proof-compare">
+      <div><span class="eyebrow">Baseline</span><strong class="proof-fail">Regression</strong><code>{{ archive.baseline_sha[:8] }}</code></div>
+      <div><span class="eyebrow">Devin candidate</span><strong class="proof-pass">Pass <span aria-hidden="true">↗</span></strong><code>{{ archive.sha[:8] }}</code></div>
+    </div>
+    <div class="proof-caption"><span>Malformed YAML import<br><small>Superset · application contract only</small></span><a href="/evidence" aria-label="Inspect the malformed YAML evidence">↗</a></div>
+    <p class="proof-source">Recorded live run · {{ archive.recorded_at|date }}<br>Archived evidence, not the current workspace.</p>
+    {% else %}
+    <p class="proof-caption">No recorded example is available. Open the workbench to inspect the configured storage.</p>
+    {% endif %}
+  </div>
+</section>
+<section class="workflow-intro" aria-labelledby="workflow-title">
+  <div class="wrap"><div class="section-heading"><h2 id="workflow-title">A clear chain of responsibility.</h2><span class="eyebrow">Built for the reviewer</span></div>
+  <ol class="method-line"><li><span>01 / GitHub</span><strong>Admit the finding</strong><p>Signed event. Approved scope.</p></li><li><span>02 / Devin</span><strong>Produce a candidate</strong><p>A bounded session. One correction.</p></li><li class="method-feature"><span>03 / Independent oracle</span><strong>Check the exact SHA</strong><p>Evidence the agent cannot rewrite.</p></li><li><span>04 / You</span><strong>Make the call</strong><p>Review the PR. Nothing auto-merges.</p></li></ol></div>
+</section>
+<section class="landing-close wrap"><div><p class="eyebrow">Less trust. More traceability.</p><h2>Look past the<br>green check.</h2></div><div><p>Keep the failure, the candidate, and the independent check in the same line of sight.</p><a class="text-link" href="/dashboard">Explore job activity <span aria-hidden="true">→</span></a><p class="micro">Current storage mode: {{ mode }}. Simulation is never live proof.</p></div></section>
+{% endblock %}

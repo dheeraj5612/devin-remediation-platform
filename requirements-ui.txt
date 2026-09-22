@@ -1,0 +1,2 @@
+# Optional browser validation only; never installed by the runtime Docker image.
+playwright==1.57.0

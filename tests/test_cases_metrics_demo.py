@@ -139,7 +139,7 @@ def test_simulation_exercises_real_state_machine_with_separate_storage(settings)
     assert "WORKER_RESUMED" in [event.event_type for event in store.events()]
     with TestClient(create_app(settings)) as client:
         # ELI5: request the page to prove the app can render the persisted snapshot.
-        page = client.get("/").text
+        page = client.get("/dashboard").text
         # ELI5: the page must make synthetic mode and the persisted activity view visible.
         assert "SIMULATION" in page
         assert "Job activity" in page
@@ -212,7 +212,7 @@ def test_report_redacts_untrusted_event_details(settings, store):
     store.change(job.id, "UNSAFE_EVENT", candidate_pr_url="javascript:credential", details={"unsafe": "<script>credential</script>", "outcome": "VERIFIED"})
     with TestClient(create_app(settings)) as client:
         # ELI5: render both output channels that could accidentally leak the text.
-        page = client.get("/").text
+        page = client.get("/dashboard").text
         export = client.get("/report.json").text
     # ELI5: the secret marker must be absent from the HTML page.
     assert "credential" not in page

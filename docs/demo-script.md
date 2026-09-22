@@ -13,7 +13,7 @@ This walkthrough uses the credential-free simulation for deterministic product b
 
 ## 0:00 to 0:45, what problem are we solving?
 
-Open the dashboard and say:
+Open `/dashboard` (the Proofline workbench) and say:
 
 > A green agent PR does not prove that a repair is safe. This demo covers two workflows: strengthening a weak test with normal and controlled-regression checks, and repairing a known application regression where malformed import YAML must return a validation error instead of an `UnboundLocalError`. In both workflows, the agent produces a candidate and an independent oracle checks the exact candidate SHA outside the Devin session. Synthetic evidence stays visible so this demo cannot be mistaken for a live customer result.
 
@@ -39,7 +39,7 @@ From a clean checkout, run:
 make demo
 ```
 
-Open `http://127.0.0.1:8000`. The deterministic run settles six jobs: four `VERIFIED`, two `ESCALATED`, six sessions, and three correction messages. These are persisted simulation records, not live customer outcomes.
+Open `http://127.0.0.1:8000/dashboard`. The deterministic run settles six jobs: four `VERIFIED`, two `ESCALATED`, six sessions, and three correction messages. These are persisted simulation records, not live customer outcomes.
 
 1. **Test-quality repair, issue 101.** The independent oracle records normal behavior and detection of the controlled regression without a correction.
 2. **Recovery, issues 102 and 104.** Issue 102 receives one correction in the same session. Issue 104 resumes after a worker restart. Point to the correction count and `WORKER_RESUMED` in the timeline.
@@ -65,7 +65,7 @@ Close on the dashboard. The live application record proves one independently val
 
 ## Final presentation checks
 
-- **390px mobile check.** Open the simulation dashboard at a 390px viewport and confirm there is no horizontal overflow. Keep the `SIMULATION` truth badge, readiness state, and selected-job cards readable without relying on hidden content.
+- **390px mobile check.** Open the simulation dashboard at a 390px viewport and confirm there is no horizontal overflow. Keep the `SIMULATION` truth badge, readiness state, and run proof comparison readable without relying on hidden content.
 - **Desktop drill-down.** Select the application acceptance job and show its workflow label, issue binding, session link, candidate and validated SHA, application `PASS`, zero corrections, and timeline. Then point to [`evidence/live-application.json`](../evidence/live-application.json) for the separate fresh live result and its application-only scope.
 
 ## Evidence boundaries
@@ -75,3 +75,5 @@ Close on the dashboard. The live application record proves one independently val
 - Available from the source comparator: the pinned baseline regression and known reference result in `evidence/application-oracle.json`.
 - New instrumentation is required for customer reporting: human review/merge decisions, independently verified provider cost, and a defined business-impact measure.
 - Not recorded here: a merge, customer impact, ROI, ACU savings, or a Loom link.
+
+The `/` overview and `/evidence` archive are presentation surfaces. The dated archive is not the currently configured database and must not be counted as another simulation run. On mobile, the run ledger precedes the global accounting and handoff line. On a detail page, expand **Run metadata & artifacts** or **Show all events** when demonstrating the complete audit trail.
