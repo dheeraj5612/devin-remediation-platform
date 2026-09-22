@@ -83,7 +83,8 @@ def harness_fingerprint() -> str:
     paths = [ROOT / "app/cases.py", ROOT / "evals/challenges.py", ROOT / "app/validator.py"]
     # Application oracles are trusted code too, so changing one invalidates its old proof.
     # ELI5: include every application oracle because its behavior is trusted evidence too.
-    paths.extend(sorted((ROOT / "evals/application_cases").glob("*.py")))
+    # ELI5: include nested oracle modules too, so changing any trusted evaluator invalidates proof.
+    paths.extend(sorted((ROOT / "evals/application_cases").rglob("*.py")))
     # ELI5: hash names and bytes together so replacing or renaming an oracle cannot reuse proof.
     source = b"".join(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes() for path in paths)
     # ELI5: one digest lets baseline readers reject any changed evaluator code.

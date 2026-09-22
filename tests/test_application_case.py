@@ -117,12 +117,25 @@ def test_application_oracle_keeps_contract_failure_assessed(settings, monkeypatc
 
 
 @pytest.mark.parametrize("mode,expected", [("regression", "REGRESSION"), ("valid_bad", "CONTRACT_FAILED"),
-                                             ("malformed_bad", "CONTRACT_FAILED")])
+                                             ("malformed_bad", "CONTRACT_FAILED"),
+                                             ("generic_error", "CONTRACT_FAILED"),
+                                             ("fuzzy_error", "CONTRACT_FAILED")])
 def test_trusted_oracle_distinguishes_exact_regression_from_contract_failures(monkeypatch, tmp_path, mode, expected):
     """The oracle only confirms the known crash and assesses wrong valid or malformed behavior."""
     # ELI5: each stand-in result exercises one branch of the real control-plane classifier.
     # The stand-in module has no real Superset checkout, so skip app bootstrap in this unit test.
     monkeypatch.setattr(acceptance, "_superset_app_context", lambda: nullcontext())
+
+    class FakeValidationError(Exception):
+        """Stand in for marshmallow.ValidationError without adding Superset to control-plane tests."""
+
+        def __init__(self, messages):
+            """Keep the same messages attribute the trusted oracle reads."""
+
+            super().__init__(messages)
+            self.messages = messages
+
+    monkeypatch.setattr(acceptance, "_validation_error_type", lambda: FakeValidationError)
     module_path = tmp_path / "superset/commands/importers/v1/utils.py"
     fake_module = SimpleNamespace(__file__=str(module_path), db=SimpleNamespace())
 
@@ -137,7 +150,13 @@ def test_trusted_oracle_distinguishes_exact_regression_from_contract_failures(mo
             raise UnboundLocalError("cannot access local variable 'config'")
         if mode == "malformed_bad":
             return {acceptance.MALFORMED_FILE: {"unexpected": True}}
-        exceptions.append(SimpleNamespace(messages={acceptance.MALFORMED_FILE: "Not a valid YAML file"}))
+        expected_messages = {acceptance.MALFORMED_FILE: "Not a valid YAML file"}
+        if mode == "generic_error":
+            exceptions.append(SimpleNamespace(messages=expected_messages))
+        elif mode == "fuzzy_error":
+            exceptions.append(FakeValidationError({acceptance.MALFORMED_FILE: "Not a valid YAML file; extra detail"}))
+        else:
+            exceptions.append(FakeValidationError(expected_messages))
         return {}
 
     fake_module.load_configs = fake_load_configs

@@ -7,12 +7,13 @@
   <meta name="description" content="{{ description|default('Trace approved findings through Devin sessions, candidate pull requests, and independent validation. Read the evidence before you review a repair.') }}">
   <meta name="robots" content="{{ 'index,follow' if page_name == 'overview' else 'noindex,nofollow' }}">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="{{ request.base_url }}static/social.png">
+  {# ELI5: relative metadata URLs cannot be rewritten by an untrusted Host header. #}
+  <meta property="og:image" content="/static/social.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="DevinTrace — independent proof for autonomous repair">
   <meta name="twitter:card" content="summary_large_image">
-  {% if page_name == 'overview' %}<link rel="canonical" href="{{ request.base_url }}"><meta property="og:url" content="{{ request.base_url }}">{% endif %}
+  {% if page_name == 'overview' %}<link rel="canonical" href="/"><meta property="og:url" content="/">{% endif %}
   <meta property="og:title" content="{{ title }} · DevinTrace">
   <meta property="og:description" content="Independent evidence for Devin-powered remediation. A candidate is not a verified repair.">
   <title>{{ title }} · DevinTrace</title>
@@ -20,13 +21,14 @@
   <link rel="icon" href="/static/favicon.ico" sizes="16x16 32x32 48x48">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="manifest" href="/static/site.webmanifest">
-  <link rel="stylesheet" href="/static/app.css">
+  {# ELI5: versioned local assets make browsers fetch the current release after a visual update. #}
+  <link rel="stylesheet" href="/static/app.css?v=devintrace-3">
   <script src="/static/app.js" defer></script>
 </head>
 <body class="page-{{ page_name }}">
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="DevinTrace home"><img class="brand-mark" src="/static/mark.svg" width="34" height="34" alt=""><img class="brand-word" src="/static/wordmark.svg" width="260" height="32" alt="DevinTrace"></a>
+    <a class="brand" href="/" aria-label="DevinTrace home"><img class="brand-mark" src="/static/mark.svg" width="34" height="34" alt=""><img class="brand-word" src="/static/wordmark.svg?v=devintrace-3" width="246" height="32" alt="DevinTrace"></a>
     <nav class="main-nav" aria-label="Main navigation">
       <a href="/" {{ 'aria-current=page' if page_name == 'overview' else '' }}>Overview</a>
       <a href="/dashboard" {{ 'aria-current=page' if page_name in ['dashboard','job'] else '' }}>Workbench</a>

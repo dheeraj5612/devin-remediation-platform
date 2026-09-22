@@ -4,15 +4,40 @@ ELI5: these requests are the front door. The tests check that only a signed,
 approved issue can become durable work and that malformed input fails closed.
 """
 
+import asyncio  # Run the raw-body coroutine against a deterministic fake request.
 import hashlib  # Compute the same SHA-256 signature GitHub sends.
 import hmac  # Compare signed bytes without timing leaks.
 import json  # Modify the synthetic webhook payload for routing cases.
 
+from fastapi import HTTPException  # Assert the bounded body gate's response.
 import pytest  # Parameterize rejected signatures and routing variants.
 from fastapi.testclient import TestClient  # Exercise the FastAPI application in-process.
 
-from app.main import create_app  # Build a fresh app for live gate checks.
+from app.main import MAX_PAYLOAD_BYTES, create_app, read_signed_body  # Build the app and test raw-body admission.
 from app.simulation import signed_event  # Create a valid signed issue event fixture.
+
+
+class OversizedChunk:
+    """Fake one network chunk that must be rejected before the app copies it."""
+
+    def __len__(self) -> int:
+        """Report a size over the request limit without allocating that body."""
+
+        return MAX_PAYLOAD_BYTES + 1
+
+    def __iter__(self):
+        """Fail if the old implementation tries to copy this chunk first."""
+
+        raise AssertionError("oversized chunk was copied before rejection")
+
+
+class ChunkedRequest:
+    """Minimal request double that yields one oversized ASGI body chunk."""
+
+    async def stream(self):
+        """Yield the sentinel chunk used by the pre-copy size regression test."""
+
+        yield OversizedChunk()
 
 
 def post(client, settings, change=None, header_change=None):
@@ -93,6 +118,14 @@ def test_oversized_body(client):
     """Reject a request body larger than the configured admission limit."""
 
     assert client.post("/webhooks/github", content=b"x" * 262145).status_code == 413  # Fail before JSON parsing or storage.
+
+
+def test_oversized_stream_chunk_is_rejected_before_copying():
+    """Reject an oversized ASGI chunk before bytearray.extend can copy it."""
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(read_signed_body(ChunkedRequest(), "secret"))
+    assert error.value.status_code == 413
 
 
 def test_malformed_signed_json(client, settings):

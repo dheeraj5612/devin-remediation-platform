@@ -85,12 +85,12 @@ async def read_signed_body(request: Request, secret: str) -> bytes:
     raw = bytearray()
     # ELI5: process the body in chunks so the size limit also protects streaming requests.
     async for chunk in request.stream():
-        # ELI5: add each bounded network chunk to the body under review.
-        raw.extend(chunk)
-        # ELI5: stop before an oversized request can become a memory problem.
-        if len(raw) > MAX_PAYLOAD_BYTES:
+        # ELI5: reject before copying a network chunk that would exceed the memory limit.
+        if len(raw) + len(chunk) > MAX_PAYLOAD_BYTES:
             # ELI5: report the size rejection without reading or parsing more bytes.
             raise HTTPException(413, "Payload too large")
+        # ELI5: add each chunk only after the complete body remains within the limit.
+        raw.extend(chunk)
     # ELI5: calculate the signature using the shared secret and the untouched body.
     expected = "sha256=" + hmac.new(secret.encode(), bytes(raw), hashlib.sha256).hexdigest()
     # ELI5: read the sender's claimed signature for a constant-time comparison.
@@ -121,7 +121,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.engine.dispose()
 
     # ELI5: the FastAPI object wires routes while the lifespan closes the shared database later.
-    app = FastAPI(title="Devin Remediation Platform", lifespan=lifespan)
+    # ELI5: docs pages load foreign assets that the app's local-only CSP intentionally blocks.
+    app = FastAPI(title="DevinTrace", docs_url=None, redoc_url=None, lifespan=lifespan)
     # ELI5: expose the read-only dependencies to tests and small local integrations.
     app.state.store, app.state.settings = store, settings
 
@@ -214,7 +215,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if payload.get("action") != "labeled":
                 # ELI5: only a newly added label is the spend-triggering action in this app.
                 return {"status": "ignored"}
-            # ELI5: strict models reject missing, extra-shaped, or incorrectly typed admission fields.
+            # ELI5: validate required admission fields while ignoring GitHub fields this app does not use.
             event = IssueEvent.model_validate(payload)
         except (ValueError, ValidationError):
             # ELI5: malformed issue events get one generic client error without leaking parser details.

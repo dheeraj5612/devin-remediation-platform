@@ -1,6 +1,6 @@
 # Devin Remediation Platform
 
-Turn a confirmed weak test into a candidate PR, then independently verify that the repaired test detects the regression it previously missed.
+Turn a confirmed weak test or application defect into a candidate PR, then independently verify the exact repair contract before human review.
 
 ## What it does
 
@@ -52,7 +52,7 @@ The public overview at `/` links to a separately dated archive at `/evidence`; a
 
 The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists in the underlying report. The UI additionally warns when the candidate and validated SHA do not match; it does not endorse an unlinked verified state. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
 
-For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). It covers what problem the platform solves, how the signed event and independent oracle fit together, why Devin is used for investigation, and the gates for a one-finding pilot. The script distinguishes deterministic simulation evidence from fields available only after a configured live run.
+For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). It covers what problem the platform solves, how the signed event and independent oracle fit together, why Devin is used for investigation, and the gates for a one-finding pilot. The script distinguishes deterministic simulation evidence from fields available only after a configured live run. For the exact routes, payloads, state transitions, and adapter calls, see [`docs/app-walkthrough.md`](docs/app-walkthrough.md).
 
 ## Why Devin
 
@@ -93,7 +93,7 @@ Do this in a **dedicated disposable environment**. Candidate test code is execut
 2. Copy `.env.example` to `.env`. Set `SUPERSET_REPO_PATH`, `SUPERSET_PYTHON`, and optionally `SUPERSET_CONFIG_PATH` to the prepared environment. Set `ALLOW_LOCAL_VALIDATION=true`. Run `make baseline`. Every registered case must be confirmed; inspect the evidence under `data/live/baselines/`.
 3. Set `DEVIN_API_KEY`, `DEVIN_ORG_ID`, and `DEVIN_MAX_ACU`. Use a credential accepted by the organization's v3 API, with session and context-resource permissions. Set `GITHUB_REPOSITORY` to the **Superset fork**, its numeric `GITHUB_REPOSITORY_ID`, a read-capable `GITHUB_TOKEN`, and a random `GITHUB_WEBHOOK_SECRET`.
 4. Run `make bootstrap-context`. This explicitly creates or reuses the organization playbook and knowledge note, but does not create a session. Existing resources with the same name but different content are rejected for manual review.
-5. Create one issue per confirmed case in the fork, including its contract and baseline evidence. Bind the actual issue numbers in `.env`, for example `CASE_ISSUES={"histogram-invalid-column":123,"schema-missing-engine":124}`. Keep them unlabeled for now.
+5. Create one issue per confirmed case in the fork, including its contract and baseline evidence. Bind the actual issue numbers in `.env`, for example `CASE_ISSUES={"histogram-invalid-column":123,"schema-missing-engine":124,"import-unparseable-yaml":125}`. Keep them unlabeled for now.
 6. Set `ENABLE_LIVE=true`; run `make doctor`. Start the web process and worker in separate terminals. Configure an `issues` webhook with JSON, the shared secret, and the public HTTPS URL ending in `/webhooks/github`. Expose only the webhook path; keep the unauthenticated dashboard private.
 7. Add `devin-remediate` to one approved issue. **This can start paid work.** Inspect the session, exact PR SHA, evaluation evidence, and event timeline before triggering another case. Cloud Devin must author the Superset repairs; this repository does not contain pre-written demonstration fixes.
 
@@ -129,8 +129,8 @@ The client uses `https://api.devin.ai/v3/organizations/{org_id}`:
 | Primitive | Implemented operations |
 | --- | --- |
 | Sessions | Create, get, cursor-paginated list, reconcile by job tag, send one correction message |
-| Playbooks | List and create/reuse repo-scoped, body-hashed `superset-remediation-<repo-slug>-<body-hash10>-v2` resources |
-| Knowledge notes | List and create/reuse the same repo-scoped, body-hashed resources through `/knowledge/notes`; content drift is rejected |
+| Playbooks | List and create/reuse repo-scoped, repository-and-body-hashed `superset-remediation-<repo-slug>-<repo-hash10>-<body-hash10>-v2` resources |
+| Knowledge notes | List and create/reuse the same repo-scoped, repository-and-body-hashed resources through `/knowledge/notes`; content drift is rejected |
 | Attachments | Upload a compact case and baseline-proof JSON file; pass its returned URL into the session |
 
 Session creation supplies documented `repos`, `playbook_id`, `knowledge_ids`, `attachment_urls`, `tags`, `max_acu_limit`, and structured-output fields. PR URLs are discovered from provider metadata and independently rechecked with GitHub. Provider metadata never substitutes for evaluation.

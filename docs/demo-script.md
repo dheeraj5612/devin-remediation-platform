@@ -1,6 +1,6 @@
 # Five-minute customer walkthrough
 
-This walkthrough uses the credential-free simulation for deterministic product behavior. A separate fresh live application result is recorded in [`evidence/live-application.json`](../evidence/live-application.json). Keep the simulation, local source comparator, and live result separate. Do not describe simulation timings as production performance or imply that the candidate PR was merged.
+This walkthrough uses the credential-free simulation for deterministic product behavior. A separate fresh live application result is recorded in [`evidence/live-application.json`](../evidence/live-application.json). Keep the simulation, local source comparator, and live result separate. For the complete route and state reference, see [`app-walkthrough.md`](app-walkthrough.md). Do not describe simulation timings as production performance or imply that the candidate PR was merged.
 
 ## Acceptance criteria
 
@@ -66,7 +66,7 @@ Close on the dashboard. The live application record proves one independently val
 ## Final presentation checks
 
 - **390px mobile check.** Open the simulation dashboard at a 390px viewport and confirm there is no horizontal overflow. Keep the `SIMULATION` truth badge, readiness state, and run proof comparison readable without relying on hidden content.
-- **Desktop drill-down.** Select the application acceptance job and show its workflow label, issue binding, session link, candidate and validated SHA, application `PASS`, zero corrections, and timeline. Then point to [`evidence/live-application.json`](../evidence/live-application.json) for the separate fresh live result and its application-only scope.
+- **Desktop drill-down.** Select the application acceptance job and show its workflow label, issue binding, provider identity when present, candidate and validated SHA, application `PASS`, zero corrections, and timeline. Then point to [`evidence/live-application.json`](../evidence/live-application.json) for the separate fresh live result and its application-only scope.
 
 ## Evidence boundaries
 

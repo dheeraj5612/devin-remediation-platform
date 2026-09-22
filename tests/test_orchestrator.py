@@ -68,6 +68,32 @@ def test_restart_resumes_saved_session_without_relaunch(rig):
     store.engine.dispose()  # Release the restarted worker's connections.
 
 
+def test_successful_same_status_poll_clears_transient_api_failures(rig):
+    """A successful unchanged provider status resets the retry budget."""
+
+    rig.github.discover = lambda state: None  # Keep polling so the provider status can repeat.
+    job = queue(rig)  # Admit the job under test.
+    rig.step(job.id)  # Move the queued job into the running state.
+    rig.step(job.id)  # Launch the one fake provider session.
+    calls = 0  # Count polls after the session has been launched.
+
+    def transient_failure(session_id):
+        """Fail once, then return the same successful provider status."""
+
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RemoteError("Network failure or timeout", retryable=True)  # Consume one retry attempt.
+        return SessionState(session_id=session_id, status="running")  # The first and third polls are identical.
+
+    rig.devin.get_session = transient_failure  # Inject one intermittent provider failure.
+    rig.step(job.id)  # Establish the normal provider status string.
+    rig.step(job.id)  # Record the transient failure and leave the job retryable.
+    assert rig.store.get(job.id).api_failures == 1  # Confirm the failure was persisted.
+    rig.step(job.id)  # A same-status success must clear that stale failure count.
+    assert rig.store.get(job.id).api_failures == 0  # The next failure gets a fresh retry budget.
+
+
 def test_lost_launch_response_reconciles_by_tag(rig):
     """Reconcile a lost create response by finding the provider session tag."""
 

@@ -292,6 +292,15 @@ def test_context_body_change_gets_new_name_without_overwriting_old_resource(live
     assert second["note_id"] == first["note_id"]
 
 
+def test_context_resource_name_keeps_repositories_distinct():
+    """Different repository spellings must not collapse to one reusable Playbook name."""
+
+    # ELI5: underscores and hyphens produce the same readable slug, so the raw hash must differ.
+    first = context_resource_name("owner/re_po", PLAYBOOK)
+    second = context_resource_name("owner/re-po", PLAYBOOK)
+    assert first != second
+
+
 def test_context_rejects_drift(live):
     """Reject a provider context resource whose body drifts from the trusted contract."""
 

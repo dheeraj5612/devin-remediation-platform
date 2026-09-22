@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import app.cases as cases_module
 from app.cases import Registry, detect
 from app.db import Store
 from app.main import create_app
@@ -70,6 +71,25 @@ def test_duplicate_issue_bindings_are_rejected(settings):
     # ELI5: registry construction must reject the ambiguous mapping.
     with pytest.raises(ValueError, match="unique"):
         Registry(settings)
+
+
+def test_harness_fingerprint_includes_nested_application_oracles(tmp_path, monkeypatch):
+    """Changing a nested trusted application oracle must invalidate its fingerprint."""
+
+    # ELI5: build the minimal trusted source tree that the fingerprint reader expects.
+    for relative in ("app/cases.py", "app/validator.py", "evals/challenges.py"):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(relative)
+    # ELI5: put the oracle in a nested directory because top-level-only scans miss it.
+    oracle = tmp_path / "evals/application_cases/nested/oracle.py"
+    oracle.parent.mkdir(parents=True, exist_ok=True)
+    oracle.write_text("first")
+    # ELI5: point only this test's fingerprint calculation at the temporary source tree.
+    monkeypatch.setattr(cases_module, "ROOT", tmp_path)
+    before = cases_module.harness_fingerprint()
+    oracle.write_text("changed")
+    assert before != cases_module.harness_fingerprint()
 
 
 def test_live_readiness_aggregates_blocked_gate_rows(live):

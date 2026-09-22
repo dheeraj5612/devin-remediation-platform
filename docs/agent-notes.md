@@ -1,5 +1,12 @@
 # Agent notes
 
+## Current documentation refresh
+
+- The walkthrough is checked against the current DevinTrace multi-page layout: `/` overview, `/dashboard` workbench, `/cases` contracts, `/evidence` archive, `/jobs/{job_id}` detail, and the JSON, health, metrics, and webhook endpoints. It uses file links without fragile source-line anchors.
+- `docs/app-walkthrough.md` separates simulation, the local source comparator, and the recorded live application result. It omits provider session and durable job identifiers and links the public candidate evidence instead.
+- The review fixes also change launch preflight, repository-scoped context naming, and recursive oracle fingerprinting. Any future live proof must be regenerated after those changes are integrated.
+- The review-fixes worktree's full suite passed 226 tests, Ruff passed, and `git diff --check` passed. The documentation refresh is intentionally separate from runtime fixes pending integration review.
+
 ## Scope and base
 
 - Integration base: `cb0ddd1`.

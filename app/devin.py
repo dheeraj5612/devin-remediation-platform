@@ -43,10 +43,12 @@ def context_resource_name(repository: str, body: str) -> str:
     """Build a repo-scoped, content-addressed v2 name for a reusable provider resource."""
     # ELI5: turn owner/repository text into a safe readable slug without preserving separators.
     slug = re.sub(r"[^a-z0-9]+", "-", repository.lower()).strip("-") or "repository"
+    # ELI5: hash the raw repository too, because different punctuation can make the same slug.
+    repository_hash = hashlib.sha256(repository.encode("utf-8")).hexdigest()[:10]
     # ELI5: hash the exact body so a changed instruction gets a new name instead of overwriting old context.
     body_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()[:10]
     # ELI5: the v2 suffix separates these scoped resources from older generic names.
-    return f"superset-remediation-{slug}-{body_hash}-v2"  # ELI5: same repo and body always produce the same name.
+    return f"superset-remediation-{slug}-{repository_hash}-{body_hash}-v2"  # ELI5: same repo and body always produce the same name.
 
 
 # ELI5: this error carries only safe retry metadata from external providers.

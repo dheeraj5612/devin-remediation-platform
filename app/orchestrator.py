@@ -162,9 +162,9 @@ class Orchestrator:
             raise RemoteError("Session identity mismatch")
         # ELI5: combine provider fields into the status string shown in the audit timeline.
         provider = f"{state.status}/{state.status_detail or ''}"
-        # ELI5: persist only real provider changes and reset transient API failures after success.
-        if provider != job.provider_status:
-            # ELI5: save provider status only after confirming this is the same session.
+        # ELI5: reset transient API failures after every successful provider response.
+        if provider != job.provider_status or job.api_failures:
+            # ELI5: save provider status and clear failures even when the status is unchanged.
             self.store.change(job.id, "PROVIDER_STATE", provider_status=provider, api_failures=0)
         # ELI5: discover only an allow-listed PR tied to this job's case branch.
         candidate = self.discover(job, state)

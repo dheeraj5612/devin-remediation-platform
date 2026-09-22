@@ -74,6 +74,15 @@ def _candidate_root() -> Path:
     return Path(value).resolve()
 
 
+def _validation_error_type() -> type[Exception]:
+    """Return Superset's marshmallow validation error type at oracle runtime."""
+    # ELI5: import the type from the prepared Superset environment only when the oracle runs.
+    from marshmallow import ValidationError
+
+    # ELI5: return the trusted external type used by the production loader's contract.
+    return ValidationError
+
+
 @contextmanager
 def _superset_app_context():
     """Initialize the candidate application before importing encrypted models.
@@ -200,10 +209,14 @@ def evaluate() -> dict[str, Any]:
                 return {"outcome": "CONTRACT_FAILED", "reason": f"malformed YAML raised an unexpected exception: {exc}",
                         "module": str(module_path), "provenance": True}
 
-            # ELI5: read the one expected file-scoped validation message, if present.
-            messages = str(malformed_exceptions[0].messages) if len(malformed_exceptions) == 1 else ""
-            # ELI5: require one file-scoped error, no partial config or schema load, and the filename.
-            if malformed_configs != {} or malformed_schema.loaded or MALFORMED_FILE not in messages:
+            # ELI5: require exactly one error object from the production validation library.
+            validation_error = _validation_error_type()
+            one_validation_error = (len(malformed_exceptions) == 1
+                                     and isinstance(malformed_exceptions[0], validation_error))
+            # ELI5: require the exact file-scoped diagnostic, no partial config, and no schema load.
+            expected_messages = {MALFORMED_FILE: "Not a valid YAML file"}
+            actual_messages = getattr(malformed_exceptions[0], "messages", None) if one_validation_error else None
+            if malformed_configs != {} or malformed_schema.loaded or actual_messages != expected_messages:
                 # ELI5: reject malformed-input results that do not match the application contract.
                 return {"outcome": "CONTRACT_FAILED", "reason": "malformed YAML did not produce one file-scoped validation error",
                         "module": str(module_path), "provenance": True}

@@ -3,35 +3,35 @@
 {% block content %}
 {# ELI5: the ledger, metrics and handoff line share one read-only report snapshot. #}
 <div class="wrap workspace workbench" data-refresh-root>
-  <div class="page-top"><div><p class="eyebrow">Remediation <span class="muted">/ All configured cases</span></p><h1>The evidence desk.</h1></div><div class="actions"><button id="refresh" class="button js-only" data-refresh type="button"><span aria-hidden="true">↻</span> Refresh</button><a class="button primary" href="/report.json" download>Export all evidence <span aria-hidden="true">↓</span></a></div></div>
+  <div class="page-top"><div><p class="eyebrow">Remediation <span class="muted">/ All cases</span></p><h1>The evidence desk.</h1></div><div class="actions"><button id="refresh" class="button js-only" data-refresh type="button"><span aria-hidden="true">↻</span> Refresh</button><a class="button primary" href="/report.json" download>Export all evidence <span aria-hidden="true">↓</span></a></div></div>
   {{ mode_banner(report) }}
-  <div class="portfolio-overview"><div class="mobile-accounting"><p class="eyebrow">All-workspace totals</p><h2>Portfolio accounting</h2></div>
+  <div class="portfolio-overview"><div class="mobile-accounting"><p class="eyebrow">Workspace totals</p><h2>Totals</h2></div>
   {# ELI5: global denominators stay unfiltered even when the ledger is narrowed. #}
   <section class="metric-strip" aria-label="All-workspace metrics, unaffected by filters">
-    <div><span class="eyebrow">Persisted runs</span><strong>{{ metrics.jobs_total }}</strong><span class="micro">{{ metrics.active }} in progress</span></div>
-    <div class="metric-attention"><span class="eyebrow">Needs attention</span><strong>{{ desk.attention_count }}</strong><a href="/dashboard?view=attention">Needs inspection <span aria-hidden="true">↗</span></a></div>
-    <div><span class="eyebrow">First-pass verification</span><strong>{{ metrics.first_pass }}<span>/{{ metrics.first_pass_denominator }}</span></strong><span class="micro">Assessed first attempts</span></div>
-    <div><span class="eyebrow">Recovered by correction</span><strong>{{ metrics.correction_recovery }}<span>/{{ metrics.correction_denominator }}</span></strong><span class="micro">Runs entering correction</span></div>
+    <div><span class="eyebrow">Runs</span><strong>{{ metrics.jobs_total }}</strong><span class="micro">{{ metrics.active }} in progress</span></div>
+    <div class="metric-attention"><span class="eyebrow">Attention</span><strong>{{ desk.attention_count }}</strong><a href="/dashboard?view=attention">Inspect <span aria-hidden="true">↗</span></a></div>
+    <div><span class="eyebrow">First-pass</span><strong>{{ metrics.first_pass }}<span>/{{ metrics.first_pass_denominator }}</span></strong><span class="micro">Assessed first attempts</span></div>
+    <div><span class="eyebrow">Correction recovery</span><strong>{{ metrics.correction_recovery }}<span>/{{ metrics.correction_denominator }}</span></strong><span class="micro">Runs entering correction</span></div>
   </section>
   {# ELI5: these are persisted handoff counts, not merge approvals or invented conversion rates. #}
   <section class="handoff" aria-labelledby="handoff-heading"><div class="handoff-label"><h2 id="handoff-heading">The handoff line</h2><p>{{ 'Synthetic records' if report.truth.simulation else 'Persisted workflow' }} · all runs</p></div><ol>
     {% for step in workflow.steps %}<li class="{{ 'final-stage' if loop.last else '' }}"><span class="stage-count">{{ desk.verified_count if loop.last else step.count }}</span><span>{{ ['Admitted','Sessions','Candidates','Evaluated','Verified'][loop.index0] }}</span></li>{% endfor %}
   </ol><div class="human-gate"><span class="gate-brackets" aria-hidden="true">[ ]</span><span>Human review<br><small>Still required</small></span></div></section>
   </div>
-  {% if desk.unlinked_count %}<p class="comparison-note">{{ desk.unlinked_count }} stored VERIFIED record(s) have incomplete SHA evidence. They are in Needs attention, not the Verified filter or proof line. Stored outcome metrics and exports retain their original state.</p>{% endif %}
+  {% if desk.unlinked_count %}<p class="comparison-note">{{ desk.unlinked_count }} stored VERIFIED record(s) have incomplete SHA evidence. They appear under Needs attention, not Verified or the proof line. Metrics and exports keep the stored state.</p>{% endif %}
   <section class="run-section" aria-labelledby="jobs-heading">
-    <div class="section-heading"><h2 id="jobs-heading">Job activity</h2><p class="micro">Snapshot <time datetime="{{ report.generated_at }}">{{ report.generated_at|clock }}</time></p></div>
+    <div class="section-heading"><h2 id="jobs-heading">Job activity</h2><p class="micro">Updated <time datetime="{{ report.generated_at }}">{{ report.generated_at|clock }}</time></p></div>
     <form class="filters" action="/dashboard" method="get" role="search" aria-label="Filter job activity">
       <input type="hidden" name="view" value="{{ desk.view }}">
-      <div class="search-field"><label for="q">Find a run</label><div><span aria-hidden="true">⌕</span><input id="q" name="q" type="search" maxlength="200" value="{{ desk.q }}" placeholder="Issue, case, SHA, or run ID" autocomplete="off"><kbd class="js-only">/</kbd></div></div>
+      <div class="search-field"><label for="q">Search runs</label><div><span aria-hidden="true">⌕</span><input id="q" name="q" type="search" maxlength="200" value="{{ desk.q }}" placeholder="Issue, case, SHA, or run ID" autocomplete="off"><kbd class="js-only">/</kbd></div></div>
       <div class="select-field"><label for="kind">Workflow</label><select id="kind" name="kind"><option value="all" {{ 'selected' if desk.kind == 'all' else '' }}>All workflows</option><option value="application" {{ 'selected' if desk.kind == 'application' else '' }}>App contract</option><option value="test_quality" {{ 'selected' if desk.kind == 'test_quality' else '' }}>Test repair</option></select></div>
       <div class="select-field"><label for="sort">Order</label><select id="sort" name="sort"><option value="attention" {{ 'selected' if desk.sort == 'attention' else '' }}>Attention first</option><option value="newest" {{ 'selected' if desk.sort == 'newest' else '' }}>Newest first</option><option value="oldest" {{ 'selected' if desk.sort == 'oldest' else '' }}>Oldest first</option></select></div>
-      <button class="button filter-submit" type="submit">Apply filters <span aria-hidden="true">→</span></button>
+      <button class="button filter-submit" type="submit">Apply <span aria-hidden="true">→</span></button>
     </form>
     <nav class="view-tabs" aria-label="Run status filters">{% for tab in desk.tabs %}<a href="{{ tab.url }}" {{ 'aria-current=page' if desk.view == tab.id else '' }}>{{ tab.label }} <span>{{ tab.count }}</span></a>{% endfor %}</nav>
     {# ELI5: only render records that match the normalized search and workflow filters. #}
     {% if desk.rows %}
-    <div class="runs-table"><table role="table"><caption class="sr-only">Filtered job activity. {{ desk.total }} matching runs. Global metrics above are not filtered.</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Finding / case</th><th scope="col" role="columnheader">Result</th><th scope="col" role="columnheader">Independent check</th><th scope="col" role="columnheader">Candidate</th><th scope="col" role="columnheader"><span class="sr-only">Inspect evidence</span></th></tr></thead><tbody role="rowgroup">
+    <div class="runs-table"><table role="table"><caption class="sr-only">Filtered runs. {{ desk.total }} match. Metrics above cover all persisted runs.</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Finding / case</th><th scope="col" role="columnheader">Result</th><th scope="col" role="columnheader">Oracle</th><th scope="col" role="columnheader">Candidate SHA</th><th scope="col" role="columnheader"><span class="sr-only">Inspect evidence</span></th></tr></thead><tbody role="rowgroup">
     {% for job in desk.rows %}<tr role="row">
       <td role="cell" class="finding-cell"><div class="finding-content"><span class="run-number mono">#{{ job.issue_number }}</span><div><a class="run-title" aria-label="{{ job|job_title }} — issue {{ job.issue_number }}" href="/jobs/{{ job.id }}?{{ desk.return_query }}">{{ job|job_title }}</a><span class="micro">{{ 'App contract' if job.case_kind == 'application' else 'Test repair' }} <span aria-hidden="true">·</span> {{ job.created_at|clock }}</span></div></div></td>
       <td role="cell" data-label="Result">{{ status(job, report.truth.simulation) }}<span class="micro">{{ job.correction_count }} / {{ job.correction_limit }} corrections</span></td>
@@ -42,9 +42,9 @@
     </tr>{% endfor %}
     </tbody></table></div>
     {# ELI5: empty storage and zero filter matches have distinct, truthful recovery paths. #}
-    {% else %}<div class="empty-state"><span class="empty-symbol" aria-hidden="true">[ – ]</span><h3>{{ 'No runs match these filters.' if desk.filtered else 'Your evidence line starts here.' }}</h3><p>{{ 'Try a different issue, case, or SHA. Your other runs are still in the workbench.' if desk.filtered else 'No persisted jobs in this storage. Review your approved contracts and readiness gates before admitting a finding.' }}</p><a class="button" href="{{ '/dashboard' if desk.filtered else '/cases' }}">{{ 'Clear all filters' if desk.filtered else 'Review contracts' }} <span aria-hidden="true">→</span></a></div>{% endif %}
+    {% else %}<div class="empty-state"><span class="empty-symbol" aria-hidden="true">[ – ]</span><h3>{{ 'No runs match these filters.' if desk.filtered else 'Your evidence line starts here.' }}</h3><p>{{ 'Try another issue, case, or SHA. Other runs remain in the workbench.' if desk.filtered else 'No persisted jobs. Review contracts and readiness before admitting a finding.' }}</p><a class="button" href="{{ '/dashboard' if desk.filtered else '/cases' }}">{{ 'Clear all filters' if desk.filtered else 'Review contracts' }} <span aria-hidden="true">→</span></a></div>{% endif %}
     <div class="results-footer"><p>{{ desk.start }}–{{ desk.end }} of {{ desk.total }} matching runs <span class="muted">· {{ metrics.jobs_total }} total</span></p>{% if desk.filtered %}<a href="/dashboard">Clear all filters</a>{% endif %}{% if desk.pages > 1 %}<nav aria-label="Results pages">{% if desk.page > 1 %}<a href="{{ desk.previous }}">← Previous</a>{% endif %}<span>{{ desk.page }} / {{ desk.pages }}</span>{% if desk.page < desk.pages %}<a href="{{ desk.next }}">Next →</a>{% endif %}</nav>{% endif %}</div>
   </section>
-  <div class="workspace-footnote"><p>Metrics cover all persisted runs. Export includes all cases, runs, and events—not just this view.</p><span>{{ metrics.duplicate_deliveries }} duplicate deliveries · {{ metrics.duplicate_executions }} duplicate executions</span></div>
+  <div class="workspace-footnote"><p>Metrics cover all persisted runs. Export includes every case, run, and event.</p><span>{{ metrics.duplicate_deliveries }} duplicate deliveries · {{ metrics.duplicate_executions }} duplicate executions</span></div>
 </div>
 {% endblock %}

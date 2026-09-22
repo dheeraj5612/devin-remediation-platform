@@ -15,7 +15,7 @@ import shutil  # ELI5: remove only the simulation folder when asked.
 
 from app.cases import Registry  # ELI5: load the approved remediation cases.
 from app.config import Settings  # ELI5: load environment-backed live settings.
-from app.devin import Devin  # ELI5: call Devin only after explicit credential checks.
+from app.devin import Devin, launch_preflight  # ELI5: share the local launch gate without calling Devin.
 from app.simulation import run_demo, simulation_settings  # ELI5: run the safe local demo.
 from app.validator import Validator  # ELI5: prove a case is weak or validate its candidate.
 
@@ -88,18 +88,22 @@ def main() -> None:
 
     # ELI5: doctor checks config, interpreter, context, and baselines before live work.
     problems = settings.live_errors()
-    # ELI5: flag the missing interpreter before attempting any candidate validation.
-    if not settings.superset_python.is_file():
-        # ELI5: candidate validation cannot run without the prepared interpreter.
-        problems.append("Prepared Superset Python interpreter is missing")
-    # ELI5: flag the missing context bundle before any live handoff.
-    if not (settings.storage / "context.json").is_file():
-        # ELI5: Devin needs the local playbook and context bundle.
-        problems.append("Run make bootstrap-context after confirming baselines")
     # ELI5: flag any issue binding that does not match the approved registry.
     if set(settings.case_issues) != set(registry.cases):
         # ELI5: webhooks must map every configured issue to a known case.
         problems.append("Bind all configured case IDs in CASE_ISSUES")
+    # ELI5: reuse the exact no-provider preflight that webhook admission and session launch use.
+    preflight_failures: dict[str, list[str]] = {}
+    for case in registry.cases.values():
+        try:
+            # ELI5: check the interpreter, checkout, context JSON, repository, and case branch together.
+            launch_preflight(settings, case, settings.github_repository)
+        except (ValueError, OSError) as exc:
+            # ELI5: group identical failures so every case is checked without noisy duplicate output.
+            preflight_failures.setdefault(str(exc), []).append(case.id)
+    for reason, case_ids in preflight_failures.items():
+        # ELI5: state which approved cases need local setup before live work can start.
+        problems.append(f"Launch preflight ({', '.join(case_ids)}): {reason}")
     # ELI5: inspect each case's proof and keep its safe failure text for the operator.
     for case in registry.cases.values():
         # ELI5: try each registered case so all missing proof is surfaced.
