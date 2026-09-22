@@ -52,10 +52,13 @@ class GitHub:
 
     def candidate(self, number: int, target_branch: str | None = None) -> Candidate:
         """Fetch PR `number` and return its head SHA after checking its case-specific base branch."""
+        # ELI5: validate the number before placing it in the API path, so malformed input cannot change that path.
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+            raise ValueError("PR number must be a positive integer")
         # ELI5: read the PR from GitHub instead of trusting Devin's reported URL or head.
         data = request(self.client, "GET", f"pulls/{number}")
         # A case can pin a different source branch when its baseline is not the global demo branch.
-        expected_branch = target_branch or self.settings.base_branch
+        expected_branch = target_branch if target_branch is not None else self.settings.base_branch
         # ELI5: all later checks use this one expected branch, so a valid PR cannot drift across cases.
         try:
             # ELI5: accept only an open, non-draft PR whose base and head repositories are our fork.

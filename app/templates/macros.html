@@ -1,11 +1,14 @@
 {# Shared evidence language: color always has a matching icon and visible label. #}
+{# ELI5: show the job state with words and an icon so color is never the only clue. #}
 {% macro status(job, simulation=false) -%}
 {% set verdict = job|linked_verdict %}
 <span data-status="{{ job.status }}" class="status {{ 'good' if verdict == 'VERIFIED' else 'bad' if verdict in ['ESCALATED','FAILED'] else 'pending' }}"><span aria-hidden="true">{{ '✓' if verdict == 'VERIFIED' else '!' if verdict in ['ESCALATED','FAILED'] else '◷' }}</span> {{ 'Simulated verified' if simulation and verdict == 'VERIFIED' else 'Unlinked verification' if verdict == 'INCOMPLETE' else job.status|replace('_',' ')|title }}</span>
 {%- endmacro %}
+{# ELI5: explain whether this report is synthetic or live and point to the readiness checks. #}
 {% macro mode_banner(report) -%}
 <div class="mode-banner {{ 'is-simulation' if report.truth.simulation else 'is-live' }}"><span class="mode-label">{{ report.truth.mode }}</span><p>{{ report.truth.statement }}</p><a href="/cases#readiness">{{ 'Live gates not evaluated' if report.truth.simulation else 'Inspect live gates' }} <span aria-hidden="true">↗</span></a></div>
 {%- endmacro %}
+{# ELI5: show the exact commit ID and offer copying only when a value was recorded. #}
 {% macro sha(value, label, id) -%}
 <div class="sha-field"><span class="eyebrow">{{ label }}</span><div><code id="{{ id }}">{{ value or 'Not recorded' }}</code>{% if value %}<button class="copy-button js-only" type="button" data-copy="{{ id }}" aria-label="Copy {{ label|lower }}">Copy</button>{% endif %}</div></div>
 {%- endmacro %}

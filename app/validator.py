@@ -74,29 +74,42 @@ def classify(report: dict, test_ids: list[str]) -> str:
     INVALID_CONTROL. Only a clean run, or a genuine assertion failure in the test body,
     counts as evidence.
     """
+    # ELI5: reject a non-object report before any dictionary lookup can raise an unhelpful exception.
+    if not isinstance(report, dict) or not isinstance(test_ids, list) or not all(isinstance(node, str) for node in test_ids):
+        return "INFRA_ERROR"
     # ELI5: read the list of tests pytest says it collected.
     collected = report.get("collected", [])
     # ELI5: require exactly the approved node IDs, with no duplicates or extras.
-    if sorted(collected) != sorted(test_ids) or len(collected) != len(set(collected)):
+    if (not isinstance(collected, list) or not all(isinstance(node, str) for node in collected)
+            or sorted(collected) != sorted(test_ids) or len(collected) != len(set(collected))):
         # ELI5: reject missing, extra, or duplicated test collection evidence.
         return "INFRA_ERROR"  # exactly the designated tests, no more, no less
     # ELI5: read per-phase report entries for the collected tests.
     reports = report.get("reports", [])
     # ELI5: every test needs setup, call, and teardown, and only exit codes 0 or 1 are expected.
-    if report.get("exitcode") not in (0, 1) or len(reports) != 3 * len(test_ids):
+    exitcode = report.get("exitcode")
+    if (isinstance(exitcode, bool) or exitcode not in (0, 1) or not isinstance(reports, list)
+            or not all(isinstance(entry, dict) for entry in reports)
+            or len(reports) != 3 * len(test_ids)):
         # ELI5: reject a report with an unexpected process code or phase count.
         return "INFRA_ERROR"  # each test yields setup + call + teardown
+    controls = report.get("controls", {})
+    # ELI5: a missing control map is the known invalid-control result; another shape is malformed evidence.
+    if not isinstance(controls, dict):
+        return "INFRA_ERROR"
     # ELI5: remember whether the intentional mutant produced a real assertion failure.
     assertion_failed = False
     # ELI5: validate each designated test independently so one malformed report cannot hide another.
     for node in test_ids:
         # ELI5: the challenge plugin must prove its controls ran for this exact node.
-        if report.get("controls", {}).get(node) is not True:
+        if controls.get(node) is not True:
             return "INVALID_CONTROL"  # the challenge fixture never ran -> the run proves nothing
         # ELI5: select only report entries belonging to this test node.
         phases = [entry for entry in reports if entry.get("nodeid") == node]
         # ELI5: require one report for each pytest phase in a predictable order-independent check.
-        if sorted(entry.get("when", "") for entry in phases) != ["call", "setup", "teardown"]:
+        phase_names = [entry.get("when") for entry in phases]
+        if (not all(isinstance(phase, str) for phase in phase_names)
+                or len(phases) != 3 or set(phase_names) != {"call", "setup", "teardown"}):
             # ELI5: missing or repeated lifecycle phases cannot prove a test result.
             return "INFRA_ERROR"
         # ELI5: inspect every phase so skip, xfail, and setup crashes cannot look green.
@@ -117,7 +130,7 @@ def classify(report: dict, test_ids: list[str]) -> str:
     # ELI5: map the observed assertion flag to the only valid pytest exit code.
     expected_code = 1 if assertion_failed else 0
     # ELI5: return a verdict only when the exit code agrees with all inspected phases.
-    return ("ASSERTION_FAILED" if assertion_failed else "PASS") if report["exitcode"] == expected_code else "INFRA_ERROR"
+    return ("ASSERTION_FAILED" if assertion_failed else "PASS") if exitcode == expected_code else "INFRA_ERROR"
 
 
 def compare_runs(normal: str, mutant: str) -> Evaluation:
@@ -195,7 +208,7 @@ class Validator:
     def scope_error(self, case: Case, sha: str) -> str | None:
         """Explain why a candidate escapes the case's approved paths or diff budget."""
         # ELI5: candidate SHAs must be exactly forty lowercase hexadecimal characters.
-        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
             # ELI5: reject malformed identifiers before asking Git for their ancestry.
             return "Invalid candidate SHA"
         # ELI5: the candidate must descend directly from the case's pinned baseline.
@@ -285,6 +298,9 @@ class Validator:
             except (OSError, ValueError):
                 # ELI5: missing interpreters or malformed reports are infrastructure failures.
                 return "INFRA_ERROR", {"reason": "missing interpreter or invalid evidence"}
+            # ELI5: JSON arrays or scalars are not pytest report objects and cannot prove a result.
+            if not isinstance(report, dict):
+                return "INFRA_ERROR", {"reason": "pytest evidence is not an object"}
             # ELI5: pytest's process exit code must match the report's recorded exit code.
             if process.returncode != report.get("exitcode"):
                 # ELI5: reject missing or forged report metadata instead of guessing a verdict.
@@ -361,12 +377,20 @@ class Validator:
             except (json.JSONDecodeError, IndexError):
                 # ELI5: no final JSON means the oracle did not prove any outcome.
                 return "INFRA_ERROR", {"reason": "application oracle emitted no JSON result", "command": command}
+            # ELI5: a JSON array or scalar has no trusted outcome field, so fail closed before .get().
+            if not isinstance(result, dict):
+                return "INFRA_ERROR", {"reason": "application oracle result is not an object", "command": command}
             # ELI5: read the machine verdict that the oracle explicitly emitted.
             status = result.get("outcome")
-            # ELI5: PASS and REGRESSION are expected verdicts; every other exit/result pair fails closed.
-            expected_exit = 0 if status in {"PASS", "REGRESSION", "CONTRACT_FAILED"} else 2
+            # ELI5: only these four strings are meaningful; every other result fails closed.
+            valid_statuses = {"PASS", "REGRESSION", "CONTRACT_FAILED", "INFRA_ERROR"}
+            if not isinstance(status, str) or status not in valid_statuses:
+                return "INFRA_ERROR", {"reason": "application oracle returned an unknown status", "result": result,
+                                        "command": command}
+            # ELI5: expected exit 0 means the oracle ran; exit 2 means it reported infrastructure failure.
+            expected_exit = 0 if status != "INFRA_ERROR" else 2
             # ELI5: require exit code and status to agree so a truncated or forged result fails closed.
-            if process.returncode != expected_exit or status not in {"PASS", "REGRESSION", "CONTRACT_FAILED", "INFRA_ERROR"}:
+            if process.returncode != expected_exit:
                 # ELI5: reject impossible combinations instead of trusting a printed status.
                 return "INFRA_ERROR", {"reason": "application oracle result was inconsistent", "result": result,
                                         "exitcode": process.returncode, "command": command}

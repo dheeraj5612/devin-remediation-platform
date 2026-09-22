@@ -1,22 +1,25 @@
 /* Progressive enhancement only. Forms, deep links, proof and exports work without JS. */
+// ELI5: keep all browser-only behavior in one small wrapper so the server-rendered page remains usable alone.
 (() => {
   "use strict";
   document.documentElement.classList.add("js");
   let noticeTimer;
 
+  // ELI5: put one short-lived success or persistent error message in the shared notice area.
   function notify(message, isError = false) {
     const notice = document.getElementById("notice");
-    if (!notice) return;
+    const output = document.getElementById("notice-message");
+    if (!notice || !output) return;
     clearTimeout(noticeTimer);
     notice.hidden = false;
     notice.toggleAttribute("data-error", isError);
-    const output = document.getElementById("notice-message");
     output.setAttribute("role", isError ? "alert" : "status");
     output.textContent = message;
     // Errors stay visible until the next action; successful copy/refresh stays briefly.
     if (!isError) noticeTimer = setTimeout(() => { notice.hidden = true; }, 6000);
   }
 
+  // ELI5: ask the server for a fresh workspace snapshot while preserving the reviewer's draft and position.
   async function refresh(button) {
     const root = document.querySelector("[data-refresh-root]");
     if (!root || root.getAttribute("aria-busy") === "true") return;
@@ -58,9 +61,14 @@
     }
   }
 
+  // ELI5: delegate clicks because the refresh operation replaces parts of the page after load.
   document.addEventListener("click", async event => {
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("[data-dismiss]")) { document.getElementById("notice").hidden = true; return; }
+    if (target?.closest("[data-dismiss]")) {
+      const notice = document.getElementById("notice");
+      if (notice) notice.hidden = true;
+      return;
+    }
     const refreshButton = target?.closest("[data-refresh]");
     if (refreshButton) { await refresh(refreshButton); return; }
     const eventToggle = target?.closest("[data-event-toggle]");
@@ -91,6 +99,7 @@
     }
   });
 
+  // ELI5: provide the slash search shortcut and let Escape close transient notices.
   document.addEventListener("keydown", event => {
     const target = event.target;
     const typing = target instanceof HTMLElement && (target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(target.tagName));

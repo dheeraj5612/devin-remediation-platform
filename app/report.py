@@ -94,12 +94,13 @@ def evidence_level(mode: str, job: Job | None) -> str:
 # ELI5: this helper keeps the small trusted validation matrix for a job.
 def _validation(job: Job | None) -> dict[str, Any]:
     """Extract the small validation matrix that a reviewer needs first."""
-    # ELI5: start with the persisted validation map, or an empty map for an unrun case.
-    raw = (job.validation or {}) if job else {}
+    # ELI5: only a JSON object has the fields this report understands; all other shapes are not run.
+    raw = job.validation if job and isinstance(job.validation, dict) else {}
     # ELI5: keep both the normalized state-machine result and the trusted application label recognizable.
     safe_outcomes = {"VERIFIED", "NORMAL_FAILED", "REGRESSION_SURVIVED", "APPLICATION_FAILED", "CONTRACT_FAILED", "SCOPE_REJECTED", "STALE_SHA", "INFRA_ERROR", "NOT_RUN", "REGRESSION"}
     # ELI5: prefer the durable state-machine column, then the safe validation summary, then NOT_RUN.
     outcome = (job.validation_status if job else None) or raw.get("outcome") or "NOT_RUN"
+    valid_outcome = isinstance(outcome, str) and outcome in safe_outcomes
     # ELI5: accept either application field name used by older and newer persisted records.
     application_status = raw.get("application_status") or raw.get("application_outcome")
     # ELI5: older records may store the application result under a shorter key.
@@ -117,15 +118,16 @@ def _validation(job: Job | None) -> dict[str, Any]:
     # ELI5: return only fields needed by the UI, with every unrecognized verdict downgraded.
     return {
         # ELI5: preserve a known state-machine outcome, or show that it was not classified.
-        "outcome": outcome if outcome in safe_outcomes else "UNCLASSIFIED",
+        "outcome": outcome if valid_outcome else "UNCLASSIFIED",
         # ELI5: a summary is safe only when its outcome itself is on the allow-list.
-        "summary": raw.get("summary") if outcome in safe_outcomes else None,
+        "summary": raw.get("summary") if valid_outcome and isinstance(raw.get("summary"), str) else None,
         # ELI5: keep a recognized normal phase, or make the uncertainty visible.
-        "normal": normal if normal in allowed_phase else "UNCLASSIFIED",
+        "normal": normal if isinstance(normal, str) and normal in allowed_phase else "UNCLASSIFIED",
         # ELI5: keep a recognized mutant phase, or make the uncertainty visible.
-        "mutant": mutant if mutant in allowed_phase else "UNCLASSIFIED",
+        "mutant": mutant if isinstance(mutant, str) and mutant in allowed_phase else "UNCLASSIFIED",
         # ELI5: application cases get their contract label; test cases leave this empty.
-        "application_status": application_status if application_status in allowed_application else None,
+        "application_status": application_status
+        if isinstance(application_status, str) and application_status in allowed_application else None,
         # ELI5: the candidate SHA identifies the artifact the provider produced.
         "candidate_sha": job.candidate_sha if job else None,
         # ELI5: the validated SHA identifies the artifact the independent checker actually tested.
@@ -147,13 +149,16 @@ def _safe_event_details(event: Event) -> dict[str, Any]:
     # ELI5: build a fresh safe map instead of mutating the database event.
     safe: dict[str, Any] = {}
     # ELI5: inspect each stored detail and copy only fields the report understands.
-    for key, value in (event.details or {}).items():
+    details = event.details if isinstance(event.details, dict) else {}
+    for key, value in details.items():
         # ELI5: skip fields that are outside the small public event vocabulary.
         if key not in allowed:
             # ELI5: unlisted fields may contain secrets, commands, or provider prose, so omit them.
             continue
         # ELI5: only allow known status words in fields that describe a verdict.
-        if key in {"outcome", "normal", "mutant", "application", "application_status"} and value not in statuses:
+        if key in {"outcome", "normal", "mutant", "application", "application_status"} and (
+            not isinstance(value, str) or value not in statuses
+        ):
             # ELI5: an unknown status is less useful than exposing an unsafe string, so omit it.
             continue
         # ELI5: keep this one approved coordinate for the customer timeline.
@@ -263,8 +268,11 @@ def _case_proof(settings: Settings, registry: Registry, case: Case) -> dict[str,
     try:
         # ELI5: ask the registry to enforce the stored baseline fingerprint and provenance.
         proof = registry.evidence(case)
+        if not isinstance(proof, dict):
+            # ELI5: a valid JSON scalar or list is still not a usable proof record.
+            raise TypeError("Baseline proof must be an object")
     # ELI5: stale or missing proof becomes a safe pending state instead of an exception page.
-    except (OSError, ValueError):
+    except (AttributeError, OSError, TypeError, ValueError):
         # ELI5: represent missing or stale evidence without leaking the exception text.
         return {
             "outcome": "UNCONFIRMED",
@@ -405,7 +413,7 @@ def pilot_readiness(settings: Settings, registry: Registry) -> dict[str, Any]:
                 # ELI5: this reads only local files and checks repository, branch, and resource identity.
                 launch_preflight(settings, active_case, settings.github_repository)
             # ELI5: any malformed local context means this gate is not ready.
-            except (OSError, TypeError, ValueError, KeyError):
+            except (AttributeError, OSError, TypeError, ValueError, KeyError):
                 # ELI5: malformed or mismatched context blocks readiness without exposing raw details.
                 context_ready = False
                 # ELI5: stop checking after the first failed case because readiness is already blocked.
@@ -421,7 +429,7 @@ def pilot_readiness(settings: Settings, registry: Registry) -> dict[str, Any]:
             # ELI5: registry.evidence performs the current fingerprint and provenance check.
             registry.evidence(case)
         # ELI5: a single case without current proof blocks the aggregate baseline gate.
-        except (OSError, ValueError):
+        except (AttributeError, OSError, TypeError, ValueError):
             # ELI5: one bad case blocks the aggregate baseline gate.
             baselines_ready = False
             # ELI5: stop once the aggregate answer is known to be blocked.

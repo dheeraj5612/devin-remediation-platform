@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "devin-remediation-platform"
 version = "0.1.0"
-description = "Independently evaluated, event-driven test remediation"
+description = "Independently evaluated, event-driven code and test remediation"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi==0.128.2", "uvicorn==0.48.0", "SQLAlchemy==2.0.50",

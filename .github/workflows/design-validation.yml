@@ -34,25 +34,25 @@ jobs:
           python -m pip install --constraint constraints.txt '.[dev]'
           python -m pip install -r requirements-ui.txt
           python -m playwright install --with-deps ${{ matrix.browser }}
-          npm install --no-save --prefix /tmp/proofline-a11y axe-core@4.10.3
+          npm install --no-save --prefix /tmp/devintrace-a11y axe-core@4.10.3
       - name: Smoke-test the installed wheel
         if: matrix.browser == 'chromium'
         run: |
-          python -m pip wheel --no-deps . --wheel-dir /tmp/proofline-wheel
-          mkdir -p /tmp/proofline-ui-review
-          python scripts/check_wheel.py /tmp/proofline-wheel/*.whl | tee /tmp/proofline-ui-review/wheel-check.log
+          python -m pip wheel --no-deps . --wheel-dir /tmp/devintrace-wheel
+          mkdir -p /tmp/devintrace-ui-review
+          python scripts/check_wheel.py /tmp/devintrace-wheel/*.whl | tee /tmp/devintrace-ui-review/wheel-check.log
       - name: Review rendered application
         env:
           REVIEW_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          mkdir -p /tmp/proofline-ui-review
-          git rev-parse HEAD > /tmp/proofline-ui-review/source-commit.txt
-          printf '%s\n' "$REVIEW_HEAD" > /tmp/proofline-ui-review/review-head.txt
-          python scripts/ui_review.py --axe /tmp/proofline-a11y/node_modules/axe-core/axe.min.js --baseline .review-baseline --browser ${{ matrix.browser }} --output /tmp/proofline-ui-review
+          mkdir -p /tmp/devintrace-ui-review
+          git rev-parse HEAD > /tmp/devintrace-ui-review/source-commit.txt
+          printf '%s\n' "$REVIEW_HEAD" > /tmp/devintrace-ui-review/review-head.txt
+          python scripts/ui_review.py --axe /tmp/devintrace-a11y/node_modules/axe-core/axe.min.js --baseline .review-baseline --browser ${{ matrix.browser }} --output /tmp/devintrace-ui-review
       - name: Upload real screenshots and results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: proofline-ui-review-${{ matrix.browser }}
-          path: /tmp/proofline-ui-review
+          name: devintrace-ui-review-${{ matrix.browser }}
+          path: /tmp/devintrace-ui-review
           retention-days: 14

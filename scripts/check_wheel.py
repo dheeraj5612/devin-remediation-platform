@@ -2,20 +2,39 @@
 
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 from zipfile import ZipFile
 
 
+def extract_wheel(archive: ZipFile, destination: Path) -> None:
+    """Extract a wheel only when every member stays inside the disposable directory."""
+
+    root = destination.resolve()
+    for member in archive.infolist():
+        # ELI5: a crafted archive must not use absolute paths or '..' to write outside the temp folder.
+        target = (root / member.filename).resolve()
+        if not target.is_relative_to(root):
+            raise ValueError(f"Wheel member escapes extraction directory: {member.filename}")
+        # ELI5: do not allow an archive symlink to redirect later files outside the checked directory.
+        if stat.S_ISLNK(member.external_attr >> 16):
+            raise ValueError(f"Wheel member is a symlink: {member.filename}")
+        archive.extract(member, root)
+
+
 def main() -> None:
     """Prove the installable artifact carries its templates, assets, cases and archive."""
+    # ELI5: this checker accepts exactly one wheel so a missing artifact fails before extraction.
     if len(sys.argv) != 2:
         raise SystemExit("Usage: python scripts/check_wheel.py path/to/project.whl")
+    # ELI5: resolve and verify the path before opening it, rather than silently checking another file.
     wheel = Path(sys.argv[1]).resolve(strict=True)
     with TemporaryDirectory(prefix="proofline-wheel-") as directory:
+        # ELI5: unpack into a disposable directory so imports cannot fall back to this checkout.
         with ZipFile(wheel) as archive:
-            archive.extractall(directory)
+            extract_wheel(archive, Path(directory))
         # A separate interpreter cannot accidentally reuse app modules from the source tree.
         subprocess.run([sys.executable, "-c", '''
 from pathlib import Path

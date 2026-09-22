@@ -16,6 +16,8 @@ from app.simulation import run_demo, simulation_settings
 @pytest.fixture(scope="module")
 def populated(tmp_path_factory):
     """One deterministic six-run store; tests only read it."""
+
+    # ELI5: build the demo once for this module so route tests share stable evidence without writes.
     settings = simulation_settings(tmp_path_factory.mktemp("presentation"))
     run_demo(settings)
     with TestClient(create_app(settings)) as client:
@@ -28,6 +30,8 @@ def populated(tmp_path_factory):
 ])
 def test_routes_and_strict_asset_policy(populated, path, title):
     """Production pages keep functioning with local assets and a strict CSP."""
+
+    # ELI5: each public HTML route must render its heading and deny inline or third-party scripts.
     client, _ = populated
     response = client.get(path)
     assert response.status_code == 200 and title in response.text
@@ -46,6 +50,9 @@ def test_routes_and_strict_asset_policy(populated, path, title):
     ("/static/social.png", "image/png"),
 ])
 def test_all_brand_and_ui_assets_are_served(populated, path, content_type):
+    """Serve every declared brand and interface asset with its expected media type."""
+
+    # ELI5: request each declared asset as a browser would and reject empty placeholders.
     client, _ = populated
     response = client.get(path)
     assert response.status_code == 200
@@ -60,6 +67,9 @@ def test_all_brand_and_ui_assets_are_served(populated, path, content_type):
     ({"kind": "application", "view": "verified"}, 1),
 ])
 def test_filter_counts_never_rewrite_global_evidence(populated, params, total):
+    """Apply each dashboard filter to a view copy while preserving the full report metrics."""
+
+    # ELI5: filters change what the reviewer sees, not the stored six-job evidence totals.
     _, report = populated
     original = copy.deepcopy(report)
     view = workbench(report, **params)
@@ -69,6 +79,9 @@ def test_filter_counts_never_rewrite_global_evidence(populated, params, total):
 
 
 def test_attention_first_and_exact_sha_search(populated):
+    """Order attention rows first and allow an exact candidate SHA to identify one run."""
+
+    # ELI5: unresolved rows lead the desk, while an immutable candidate SHA finds one record.
     _, report = populated
     view = workbench(report)
     assert [job["status"] for job in view["rows"][:2]] == ["ESCALATED", "ESCALATED"]
@@ -77,6 +90,9 @@ def test_attention_first_and_exact_sha_search(populated):
 
 
 def test_pagination_invalid_inputs_and_encoded_links(populated):
+    """Clamp invalid pages and filters while URL-encoding query text in generated links."""
+
+    # ELI5: a bad page falls back to the last page, and hostile query text remains safe in links.
     _, report = populated
     large = {**report, "jobs": report["jobs"] * 8}
     result = workbench(large, page=999)
@@ -90,6 +106,9 @@ def test_pagination_invalid_inputs_and_encoded_links(populated):
 
 
 def test_search_escaping_and_filtered_export(populated):
+    """Escape hostile search text in HTML and keep JSON export independent of dashboard filters."""
+
+    # ELI5: user search is displayed as text, while the export always contains the complete report.
     client, report = populated
     response = client.get("/dashboard", params={"q": '<script>alert("x")</script>'})
     assert response.status_code == 200
@@ -103,6 +122,8 @@ def test_search_escaping_and_filtered_export(populated):
 
 def test_source_modes_and_archive_do_not_mutate_storage(client):
     """The archived success cannot become an empty workspace's success metric."""
+
+    # ELI5: an empty current store can show historical evidence without pretending it ran locally.
     assert "No persisted jobs" in client.get("/dashboard").text
     assert "ARCHIVE" in client.get("/evidence").text
     assert "separate from current workspace metrics" in client.get("/evidence").text
@@ -112,6 +133,9 @@ def test_source_modes_and_archive_do_not_mutate_storage(client):
 
 
 def test_case_specific_checks_and_synthetic_artifacts(populated):
+    """Render application and test cases with their distinct evidence language and safe links."""
+
+    # ELI5: application and test-quality records use different proof labels but share safe rendering.
     client, report = populated
     application = next(job for job in report["jobs"] if job["issue_number"] == 105)
     test_repair = next(job for job in report["jobs"] if job["issue_number"] == 101)
@@ -125,6 +149,9 @@ def test_case_specific_checks_and_synthetic_artifacts(populated):
 
 
 def test_metadata_and_error_recovery(populated):
+    """Keep indexing metadata, not-found responses, and method errors within their route contracts."""
+
+    # ELI5: check crawler hints and both HTML and JSON error shapes from one public client.
     client, _ = populated
     assert 'content="index,follow"' in client.get("/").text
     assert 'content="noindex,nofollow"' in client.get("/dashboard").text
@@ -136,8 +163,14 @@ def test_metadata_and_error_recovery(populated):
 
 
 def test_database_failure_is_not_an_empty_success(client, monkeypatch):
+    """Return a generic service failure when storage reads break instead of claiming an empty workspace."""
+
+    # ELI5: force the storage boundary to fail and make sure private SQL text never reaches the response.
     def fail():
+        """Raise a private database error for the route-boundary test."""
+
         raise OperationalError("private SQL", {}, Exception("do-not-leak-this"))
+
     monkeypatch.setattr(client.app.state.store, "jobs", fail)
     response = client.get("/dashboard", headers={"Accept": "text/html"})
     assert response.status_code == 503
@@ -147,6 +180,9 @@ def test_database_failure_is_not_an_empty_success(client, monkeypatch):
 
 
 def test_live_empty_storage_stays_live_and_blocked(settings):
+    """Keep an empty LIVE workspace labelled as live and blocked rather than as simulation success."""
+
+    # ELI5: mode labels and readiness blockers must survive even when no live rows exist.
     config = settings.model_copy(update={"mode": "LIVE"})
     with TestClient(create_app(config)) as client:
         assert "Live control-plane records only" in client.get("/dashboard").text
@@ -160,10 +196,16 @@ def test_live_empty_storage_stays_live_and_blocked(settings):
     ("2026-09-22T10:15:00", "10:15:00 UTC"),
 ])
 def test_utc_formatting(value, expected):
+    """Format absent, malformed, naive, and offset timestamps according to the UTC display contract."""
+
+    # ELI5: every input shape gets the stable short timestamp text shown to reviewers.
     assert human_time(value, short=True) == expected
 
 
 def test_archive_fails_closed_on_a_mismatched_sha(tmp_path, monkeypatch):
+    """Reject archived evidence when its candidate link mismatches or its JSON becomes unreadable."""
+
+    # ELI5: success is valid only for the original archive, an exact SHA link, and readable JSON.
     from app import presentation
     valid = json.loads(presentation.ARCHIVE_PATH.read_text())
     assert recorded_evidence()["application"] == "PASS"
@@ -179,6 +221,9 @@ def test_archive_fails_closed_on_a_mismatched_sha(tmp_path, monkeypatch):
 
 
 def test_unlinked_verification_is_not_endorsed(populated):
+    """Keep incomplete SHA links out of the verified language on the run detail page."""
+
+    # ELI5: make a row look verified while breaking its SHA link, then inspect the detail page.
     client, report = populated
     damaged = copy.deepcopy(report)
     job = damaged["jobs"][0]
@@ -195,6 +240,9 @@ def test_unlinked_verification_is_not_endorsed(populated):
 
 
 def test_missing_registry_case_never_borrows_another_baseline(populated):
+    """Explain a retired case instead of borrowing another registered case's baseline evidence."""
+
+    # ELI5: changing only the case ID must produce a retirement message, never borrowed proof.
     client, report = populated
     damaged = copy.deepcopy(report)
     damaged["jobs"][0]["case_id"] = "retired-case"

@@ -75,9 +75,9 @@ class FakeDevin:
     def find_session(self, job_id: str) -> SessionState | None:
         """Find a prior fake session by job ownership to model restart reconciliation."""
         # ELI5: search saved fake records by the durable job ID.
-        matches = [sid for sid, record in self.sessions.items() if record["job_id"] == job_id]
+        session_id = next((sid for sid, record in self.sessions.items() if record["job_id"] == job_id), None)
         # ELI5: return the existing session or no result without creating another one.
-        return self.get_session(matches[0]) if matches else None
+        return self.get_session(session_id) if session_id else None
 
     def send_correction(self, session_id: str, message: str) -> None:
         """Record one correction and advance that fake session's revision."""
@@ -213,7 +213,7 @@ def run_demo(settings: Settings) -> dict:
         # ELI5: collect final statuses by the issue number used in the demo report.
         actual = {job.issue_number: job.status for job in store.jobs()}
         # 6 sessions (one per job, none recreated after the restart) and 3 corrections (102, 103, and 106).
-        if actual != EXPECTED or devin.create_count != 6 or len(devin.messages) != 3:
+        if actual != EXPECTED or devin.create_count != 6 or len(devin.messages) != 3 or not restarted:
             # ELI5: fail loudly if deduplication, retries, or application scenarios drift.
             raise RuntimeError(f"Unexpected simulation outcome: {actual}")
     # ELI5: return report metrics after the TestClient has finished all webhook activity.

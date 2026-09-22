@@ -39,3 +39,44 @@
 - The annotation pass is comment/docstring-only from source baseline `fb0b150df3fa09376a24c2642102aab1ee2e5c7b`; historical live-proof files and fingerprints are unchanged.
 - All 18 maintained Python files match their source AST after stripping docstrings. The semantic audit covers 1,059/1,059 substantive statements with an inline or adjacent explanation, excluding imports, punctuation-only structure, docstring expressions, and `pass`; all 146 classes/functions/methods have summaries.
 - Jinja comment stripping and the same fixture render are unchanged. Python compilation, `ruff check .`, and whitespace checks pass. The existing 133-test result remains applicable because this branch changes documentation only.
+
+## Non-Python and asset audit
+
+Reviewed 22 September 2026 against `945aa10`. The audit covered deployment files,
+workflow configuration, package metadata, templates, static identity assets,
+case and evidence records, findings, and design documents.
+
+Changes made:
+
+- Added plain-language ELI5 comments immediately above all three macros in
+  `app/templates/macros.html`.
+- Renamed stale Proofline temporary paths and artifact names in the browser
+  review workflow to DevinTrace names.
+- Updated the package description to cover both code and test remediation.
+- Ignored the review checkout and UI review output in Docker build context.
+- Replaced the manifest's em dash with a colon in the installed product name.
+
+No-change rationale by category:
+
+- `.gitignore`, Makefile, Dockerfile, dependency constraints, and UI
+  requirements already match the supported Python, wheel, and runtime layout.
+  The package description was corrected to include application code remediation;
+  no command or package behavior was expanded.
+- The verify workflow and the browser matrix's pinned baseline, permissions,
+  timeouts, and dependency installation are internally consistent. Only the
+  stale product names and their matching paths were corrected.
+- `DESIGN.md` and `docs/design/*` are dated design and review records. They
+  were preserved as historical evidence, including their original product
+  terminology and measured claims.
+- `evals/cases.yaml`, `findings/*`, `evidence/*.json`, and
+  `app/archive/live-application.json` are source-backed or immutable evidence.
+  Their SHA, fingerprint, provenance, and scope fields were cross-checked and
+  left unchanged.
+- SVG, PNG, and ICO identity assets are valid packaged files with matching
+  manifest references. No binary or visual asset change was justified.
+- `app/__init__.py`, `evals/__init__.py`, and `tests/__init__.py` are empty
+  package markers and need no content.
+
+Validation for this audit included YAML and JSON parsing, evidence-to-case
+baseline matching, Jinja template rendering through the existing test suite,
+and `git diff --check`.

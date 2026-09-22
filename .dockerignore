@@ -8,3 +8,5 @@ data
 .pytest_cache
 .ruff_cache
 *.egg-info
+.review-baseline
+ui-review

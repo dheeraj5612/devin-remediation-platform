@@ -37,7 +37,11 @@ def main() -> None:
                 store.enqueue(f"ui-fixture-{index}", "demo/superset", 700 + index, "import-unparseable-yaml")
         if args.scenario == "storage-error":
             def unavailable(*_args, **_kwargs):
+                """Raise a private database error so the UI can exercise its 503 boundary."""
+
+                # ELI5: make every read fail without exposing the simulated SQL details to the page.
                 raise OperationalError("test-only read failure", {}, Exception("not public"))
+
             store.jobs = unavailable
         uvicorn.run(application, host="127.0.0.1", port=args.port, log_level="warning")
 

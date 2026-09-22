@@ -26,19 +26,35 @@ def metrics(store: Store) -> dict:
 def metrics_from_records(jobs: list[Job], events: list[Event]) -> dict:
     """Calculate metrics from one already-read job/event snapshot for consistent exports."""
     # ELI5: the HTML and JSON report reuse these same rows, so their totals cannot drift mid-render.
+    job_ids = {job.id for job in jobs}  # ELI5: event counts must describe only the supplied job snapshot.
     # Jobs whose first candidate got a real verdict: the denominator for "first-pass" success.
     # ELI5: collect jobs whose first candidate received a real repair verdict.
-    assessed = {event.job_id for event in events if event.event_type == "EVALUATED"
-                and event.details.get("correction_count") == 0
-                and event.details.get("outcome") in ASSESSED_OUTCOMES}
+    assessed = {
+        event.job_id
+        for event in events
+        if event.job_id in job_ids
+        and event.event_type == "EVALUATED"
+        and isinstance(event.details, dict)
+        and event.details.get("correction_count") == 0
+        and isinstance(event.details.get("outcome"), str)
+        and event.details.get("outcome") in ASSESSED_OUTCOMES
+    }
     # Jobs where we actually sent the one correction: the denominator for "correction recovery".
     # ELI5: collect jobs where the worker actually sent its one bounded correction.
-    corrected = {event.job_id for event in events if event.event_type == "CORRECTION_SENT"}
+    corrected = {event.job_id for event in events if event.job_id in job_ids and event.event_type == "CORRECTION_SENT"}
     # Latencies are measured from the webhook (job.created_at), i.e. what a human waited.
     # ELI5: measure webhook-to-PR time only for jobs that persisted a PR timestamp.
-    pr_times = [(job.pr_created_at - job.created_at).total_seconds() for job in jobs if job.pr_created_at]
+    pr_times = [
+        (job.pr_created_at - job.created_at).total_seconds()
+        for job in jobs
+        if job.pr_created_at is not None and job.created_at is not None
+    ]
     # ELI5: measure webhook-to-verification time only for terminal verified jobs.
-    verified_times = [(job.completed_at - job.created_at).total_seconds() for job in jobs if job.status == "VERIFIED"]
+    verified_times = [
+        (job.completed_at - job.created_at).total_seconds()
+        for job in jobs
+        if job.status == "VERIFIED" and job.completed_at is not None and job.created_at is not None
+    ]
     # ELI5: count every state, including active and escalated jobs.
     status_counts = {}
     # ELI5: visit each job once to count its durable state.

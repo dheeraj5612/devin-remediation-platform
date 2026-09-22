@@ -40,6 +40,9 @@ def main() -> None:
                   "Navigation timings are local-runner observations, not production performance."]}
 
     def check(name: str, condition: bool) -> None:
+        """Record one review assertion and stop immediately when it fails."""
+
+        # ELI5: keep every check in the JSON result while making failures visible to the runner.
         checks.append({"name": name, "passed": bool(condition)})
         if not condition:
             raise AssertionError(name)
@@ -86,17 +89,25 @@ def main() -> None:
             browser = getattr(playwright, args.browser).launch()
             context = browser.new_context(viewport={"width": 1440, "height": 1000}, reduced_motion="reduce")
             page = context.new_page()
+            # ELI5: capture browser exceptions so a page that looks right cannot hide a JavaScript crash.
             page.on("pageerror", lambda error: page_errors.append(str(error)))
             external_requests = []
+            # ELI5: record any request that escapes the local fixture servers.
             page.on("request", lambda request: external_requests.append(request.url)
                     if not request.url.startswith("http://127.0.0.1:") else None)
 
             def screenshot(name: str, full: bool = True) -> None:
+                """Save one named browser view and include it in the machine-readable result."""
+
+                # ELI5: screenshots make each route and viewport check inspectable after the run.
                 filename = f"{name}.png"
                 page.screenshot(path=str(output / filename), full_page=full, animations="disabled")
                 snapshots.append(filename)
 
             def audit(name: str) -> None:
+                """Run the bundled axe rules against the currently visible page."""
+
+                # ELI5: load axe in DevTools, then store compact violations instead of raw browser output.
                 # DevTools evaluation avoids relaxing the page's real production CSP.
                 page.evaluate(axe_source)
                 assessment = page.evaluate("""async () => await axe.run(document, {

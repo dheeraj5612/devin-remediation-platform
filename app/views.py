@@ -39,7 +39,8 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
         query = request.query_params
         try:
             page_number = int(query.get("page", "1"))
-        except ValueError:
+        except (TypeError, ValueError):
+            # ELI5: malformed query text should show the first page instead of breaking the read-only view.
             page_number = 1
         return {
             "report": report, "metrics": report["metrics"], "workflow": report["workflow"],

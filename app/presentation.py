@@ -22,8 +22,11 @@ SHORT_TITLES = {
 
 def human_time(value: str | None, short: bool = False) -> str:
     """Format persisted ISO timestamps in UTC, leaving missing dates explicit."""
-    if not value:
+    # ELI5: only a real string can be parsed; malformed stored values must not break a page.
+    if value is None:
         return "Not recorded"
+    if not isinstance(value, str) or not value:
+        return "Time unavailable"
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         parsed = parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
@@ -101,9 +104,12 @@ def recorded_evidence() -> dict[str, Any] | None:
         record = json.loads(ARCHIVE_PATH.read_text())
         candidate, job, baseline = record["candidate"], record["job"], record["baseline"]
         sha = candidate["head_sha"]
-        if (record["workflow"] != "LIVE" or record["case_id"] != "import-unparseable-yaml"
+        # ELI5: accept only a positive integer PR number, never a boolean or a display placeholder.
+        pr_number = candidate["pr_number"]
+        if (isinstance(pr_number, bool) or not isinstance(pr_number, int) or pr_number < 1
+                or record["workflow"] != "LIVE" or record["case_id"] != "import-unparseable-yaml"
                 or baseline["outcome"] != "CONFIRMED" or baseline["application_status"] != "REGRESSION"
-                or not baseline["provenance"] or not job["provenance"]
+                or baseline["provenance"] is not True or job["provenance"] is not True
                 or job["validation_status"] != "VERIFIED" or job["status"] != "VERIFIED" or job["application_status"] != "PASS"
                 or candidate["validated_sha"] != sha or not valid_sha(sha) or not valid_sha(baseline["sha"])):
             return None
@@ -112,8 +118,8 @@ def recorded_evidence() -> dict[str, Any] | None:
             "baseline_sha": baseline["sha"], "baseline": baseline["application_status"],
             "application": job["application_status"], "corrections": job["correction_count"],
             "started_at": job["timestamps_utc_as_stored"]["started_at"], "completed_at": job["timestamps_utc_as_stored"]["completed_at"],
-            "pr": candidate["pr_number"],
-            "pr_url": f"https://github.com/dheeraj5612/superset/pull/{int(candidate['pr_number'])}",
+            "pr": pr_number,
+            "pr_url": f"https://github.com/dheeraj5612/superset/pull/{pr_number}",
         }
     except (OSError, ValueError, KeyError, TypeError):
         return None

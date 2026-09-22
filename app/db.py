@@ -116,7 +116,8 @@ class Store:
         """Return this mode's event timeline, optionally narrowed to one job."""
 
         query = select(Event).join(Job).where(Job.mode == self.mode)  # Filter through the owning job.
-        if job_id:
+        if job_id is not None:
+            # ELI5: an empty ID is still a requested filter, so it must not reveal every event.
             query = query.where(Event.job_id == job_id)  # Avoid exposing another job's timeline.
         # ELI5: read the ordered timeline through the same mode filter as jobs.
         with self.session() as session:
@@ -152,6 +153,9 @@ class Store:
         # ELI5: commit the new polling deadline as one small update.
         with self.session.begin() as session:
             job = session.get(Job, job_id)  # The caller only defers jobs it already claimed.
+            if job is None or job.mode != self.mode:
+                # ELI5: fail closed instead of turning an unknown ID into an AttributeError.
+                raise KeyError(job_id)
             job.next_poll_at = now() + timedelta(seconds=seconds)  # Delay polling or retry backoff.
 
     @staticmethod
