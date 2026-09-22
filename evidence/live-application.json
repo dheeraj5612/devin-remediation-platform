@@ -1,0 +1,67 @@
+{
+  "schema": "live-application-evidence-v1",
+  "recorded_at_utc": "2026-09-22T02:22:30Z",
+  "case_id": "import-unparseable-yaml",
+  "workflow": "LIVE",
+  "source_repository": "dheeraj5612/superset",
+  "issue_number": 7,
+  "github_delivery_id": "61e44eb0-b62a-11f1-8f5f-2830158bde91",
+  "job_id": "2b3c320ec6b44232b0a60705fe2a0a84",
+  "session": {
+    "session_id": "6e99825427cb4075baf5fd0bfe9bd2f0",
+    "sessions_used": 1,
+    "status_at_capture": "exit",
+    "termination_requested": true,
+    "termination_http": 200,
+    "pull_request_count": 1,
+    "acu_cap": 3,
+    "acus_consumed_reported": 0.0,
+    "acu_status": "PROVIDER_REPORTED_TERMINAL_SNAPSHOT",
+    "cost_claim": false
+  },
+  "candidate": {
+    "pr_number": 8,
+    "pr_url": "https://github.com/dheeraj5612/superset/pull/8",
+    "base_branch": "remediation-import-yaml",
+    "head_sha": "5533125a2056ca4d8cd344a69d4eec575b1db786",
+    "validated_sha": "5533125a2056ca4d8cd344a69d4eec575b1db786",
+    "pr_state_at_read": "open",
+    "merged": false
+  },
+  "job": {
+    "mode": "LIVE",
+    "status": "VERIFIED",
+    "validation_status": "VERIFIED",
+    "application_status": "PASS",
+    "provenance": true,
+    "correction_count": 0,
+    "api_failures": 0,
+    "stale_count": 0,
+    "timestamps_utc_as_stored": {
+      "created_at": "2026-09-22T02:07:38.191711Z",
+      "started_at": "2026-09-22T02:08:18.660469Z",
+      "pr_created_at": "2026-09-22T02:13:15.666909Z",
+      "completed_at": "2026-09-22T02:15:23.288529Z"
+    }
+  },
+  "baseline": {
+    "sha": "dedfe23a805151decca6deaf15b032e040e42e82",
+    "outcome": "CONFIRMED",
+    "application_status": "REGRESSION",
+    "provenance": true,
+    "recorded_at": "2026-09-22T01:35:46.464793",
+    "case_fingerprint": "255205736073a625a5c990e2f4e1b4765d67c70e71df51ee951f1d58ad8122ba",
+    "harness_fingerprint": "d71498b04c327b52a1f2e2412c76059f59dcfaa6080f12620b94641261829aac"
+  },
+  "scope": {
+    "candidate_acceptance": "Application oracle only",
+    "full_superset_suite_evaluated": false,
+    "simulation_results_are_separate": true,
+    "source_comparator_evidence": "evidence/application-oracle.json"
+  },
+  "limitations": [
+    "The provider terminal snapshot reported 0.0 ACUs after a successful termination request; this is not an independent cost or zero-cost claim.",
+    "PASS covers the trusted malformed-YAML application contract only; it is not a full Superset suite result.",
+    "The candidate PR remained open when read; no merge or customer impact is claimed."
+  ]
+}

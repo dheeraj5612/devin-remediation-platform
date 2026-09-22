@@ -1,6 +1,6 @@
 # Five-minute customer walkthrough
 
-This walkthrough uses the credential-free simulation. Every result is labelled synthetic. Do not describe local timings as production performance or imply that a candidate PR was merged.
+This walkthrough uses the credential-free simulation for deterministic product behavior. A separate fresh live application result is recorded in [`evidence/live-application.json`](../evidence/live-application.json). Keep the simulation, local source comparator, and live result separate. Do not describe simulation timings as production performance or imply that the candidate PR was merged.
 
 ## Acceptance criteria
 
@@ -9,6 +9,7 @@ This walkthrough uses the credential-free simulation. Every result is labelled s
 - Each case shows its workflow type, contract, allowed paths, baseline state, and evidence badge.
 - A selected job shows exact candidate and validated SHAs, oracle status, timeline, and persisted links.
 - The demo covers duplicate delivery, correction recovery, application acceptance and rejection, escalation, and restart recovery without a live API call.
+- The live application record is shown separately from the simulation and is labelled with its application-only scope and provider-reported 0.0 ACUs without a cost claim.
 
 ## 0:00 to 0:45, what problem are we solving?
 
@@ -60,11 +61,17 @@ Point to **Pilot readiness** and say:
 
 > A customer pilot starts with one approved finding in a dedicated fork. Before live execution, the operator needs current baseline proof, a prepared disposable validator, a context bundle, and a unique issue binding. The readiness panel reports those gates; it does not call simulation production-ready.
 
-Close on the dashboard. A live Devin run, merged change, ROI, and ACU savings require separate measured evidence.
+Close on the dashboard. The live application record proves one independently validated contract result. A merged change, customer impact, ROI, and ACU savings require separate measured evidence.
+
+## Final presentation checks
+
+- **390px mobile check.** Open the simulation dashboard at a 390px viewport and confirm there is no horizontal overflow. Keep the `SIMULATION` truth badge, readiness state, and selected-job cards readable without relying on hidden content.
+- **Desktop drill-down.** Select the application acceptance job and show its workflow label, issue binding, session link, candidate and validated SHA, application `PASS`, zero corrections, and timeline. Then point to [`evidence/live-application.json`](../evidence/live-application.json) for the separate fresh live result and its application-only scope.
 
 ## Evidence boundaries
 
 - Available now: deterministic simulation states, SQLite jobs/events, validation fields, exact simulated SHAs, readiness checks, and the downloadable report.
-- Available only after a configured live run: real session and PR links, live candidate SHA, independent validation record, and measured timestamps.
-- New instrumentation is required for customer reporting: human review/merge decisions, provider usage or cost, and a defined business-impact measure.
-- Not recorded here: merge status, customer impact, ROI, ACU savings, or a Loom link.
+- Available from the recorded live run: one real Devin session, candidate PR #8, live candidate and validated SHA, independent application validation, and durable timestamps.
+- Available from the source comparator: the pinned baseline regression and known reference result in `evidence/application-oracle.json`.
+- New instrumentation is required for customer reporting: human review/merge decisions, independently verified provider cost, and a defined business-impact measure.
+- Not recorded here: a merge, customer impact, ROI, ACU savings, or a Loom link.
