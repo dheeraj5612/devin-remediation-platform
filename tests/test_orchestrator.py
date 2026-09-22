@@ -176,6 +176,7 @@ def test_sha_change_after_evaluation_cannot_be_verified(rig):
     current = rig.store.get(job.id)  # Read the persisted state after the check.
     assert current.status == "PR_OPENED"  # The job returns to PR discovery for a fresh head.
     assert current.validation_status == "STALE_SHA"  # The stale evaluation is recorded explicitly.
+    assert current.validation is None  # Old validation results cannot describe the new candidate head.
     assert not current.validated_sha  # No stale SHA can be marked verified.
     assert current.candidate_sha == "f" * 40  # The new candidate head is now the active one.
 

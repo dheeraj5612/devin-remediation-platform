@@ -188,6 +188,10 @@ def test_unlinked_verification_is_not_endorsed(populated):
         html = client.get(f"/jobs/{job['id']}").text
     assert "The verification link is incomplete." in html
     assert "The check passed. Review comes next." not in html
+    job.update(candidate_sha="placeholder", validated_sha="placeholder")
+    with patch("app.views.build_report", return_value=damaged):
+        html = client.get(f"/jobs/{job['id']}").text
+    assert "Exact SHA matched" not in html
 
 
 def test_missing_registry_case_never_borrows_another_baseline(populated):

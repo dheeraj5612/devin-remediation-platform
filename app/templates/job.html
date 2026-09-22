@@ -2,6 +2,7 @@
 {% from 'macros.html' import status, mode_banner, sha %}
 {% block content %}
 {% set verdict = selected_job|linked_verdict %}
+{% set sha_verified = verdict == 'VERIFIED' %}
 <div class="wrap workspace" data-refresh-root>
   <a class="back-link" href="/dashboard?{{ desk.return_query }}">← Back to workbench</a>
   <div class="page-top detail-top"><div><p class="eyebrow">Run #{{ selected_job.issue_number }} <span class="muted">/ {{ 'App contract' if selected_job.case_kind == 'application' else 'Test repair' }}</span></p><h1>{{ selected_job|job_title }}</h1><p class="detail-subtitle">{{ selected_job.case_title }}</p></div><div class="actions"><button id="refresh" class="button js-only" data-refresh type="button"><span aria-hidden="true">↻</span> Refresh</button>{% if not report.truth.simulation and selected_job.links.pull_request %}<a class="button primary" href="{{ selected_job.links.pull_request }}">Review candidate PR ↗</a>{% endif %}</div></div>
@@ -12,7 +13,7 @@
   <nav class="detail-nav" aria-label="Run evidence sections"><a href="#proof-heading">Proof comparison ↓</a><a href="#boundary-heading">Review boundary ↓</a><a href="#events-heading">Event trail ↓</a></nav>
   <section class="proof-sheet" aria-labelledby="proof-heading">
     <div class="section-heading"><div><p class="eyebrow">01 / The proof comparison</p><h2 id="proof-heading">One contract. Both sides of the repair.</h2></div><span class="mono">{{ 'APPLICATION' if selected_job.case_kind == 'application' else 'TEST + MUTANT' }}</span></div>
-    <div class="comparison-table"><table><caption class="sr-only">Baseline and candidate evaluation results</caption><thead><tr><th scope="col">Independent check</th><th scope="col">Before <span>Baseline</span></th><th scope="col">After <span>Candidate</span></th></tr></thead><tbody>
+    <div class="comparison-table"><table><caption class="sr-only">Baseline and candidate evaluation results</caption><thead><tr><th scope="col">Independent check</th><th scope="col">Before <span>Current case baseline</span></th><th scope="col">After <span>Candidate</span></th></tr></thead><tbody>
     {% if selected_job.case_kind == 'application' %}
     <tr><th scope="row">Application contract<span>Malformed YAML handling</span></th><td>{{ selected_case.baseline.application_status or 'Not recorded' }}</td><td class="{{ 'check-pass' if selected_job.validation.application_status == 'PASS' else 'check-fail' if selected_job.validation.application_status == 'REGRESSION' else '' }}">{{ selected_job.validation.application_status or 'Not recorded' }}<span>Application: {{ selected_job.validation.application_status or 'Not recorded' }}</span></td></tr>
     {% else %}
@@ -20,7 +21,7 @@
     <tr><th scope="row">Regression challenge<span>Deliberately broken behavior is caught</span></th><td>{{ selected_case.baseline.mutant or 'Not recorded' }}</td><td class="{{ 'check-pass' if selected_job.validation.mutant == 'ASSERTION_FAILED' else 'check-fail' if selected_job.validation.mutant == 'PASS' else '' }}">{{ selected_job.validation.mutant }}<span>{{ 'Regression caught' if selected_job.validation.mutant == 'ASSERTION_FAILED' else 'Regression survived' if selected_job.validation.mutant == 'PASS' else 'No accepted result yet' }}</span></td></tr>
     {% endif %}
     </tbody></table></div>
-    <div class="comparison-note"><p>{{ selected_case.baseline.statement }} {% if selected_job.case_kind != 'application' %}An assertion failure on the mutant is the intended result; the normal run must still pass.{% endif %}</p><span class="status {{ 'good' if selected_job.validated_sha and selected_job.validated_sha == selected_job.candidate_sha else 'pending' }}">{{ '✓ Synthetic SHA matched' if report.truth.simulation and selected_job.validated_sha and selected_job.validated_sha == selected_job.candidate_sha else '✓ Exact SHA matched' if selected_job.validated_sha and selected_job.validated_sha == selected_job.candidate_sha else '— No verified SHA match' }}</span></div>
+    <div class="comparison-note"><p>{{ selected_case.baseline.statement }} {% if selected_job.case_kind != 'application' %}An assertion failure on the mutant is the intended result; the normal run must still pass.{% endif %}</p><span class="status {{ 'good' if sha_verified else 'pending' }}">{{ '✓ Synthetic SHA matched' if report.truth.simulation and sha_verified else '✓ Exact SHA matched' if sha_verified else '— No verified SHA match' }}</span></div>
     <div class="sha-pair">{{ sha(selected_job.candidate_sha, 'Candidate SHA', 'candidate-sha') }}{{ sha(selected_job.validated_sha, 'Validated SHA', 'validated-sha') }}</div>
   </section>
   <div class="detail-columns">
