@@ -82,7 +82,8 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
                            mode=settings.mode,
                        ),
                        milestone_types={"QUEUED", "SESSION_ATTACHED", "PR_OPENED", "EVALUATED",
-                                        "CORRECTION_SENT", "VERIFIED", "ESCALATED", "FAILED"})
+                                        "CORRECTION_SENT", "VERIFIED", "ESCALATED", "FAILED",
+                                        "INFRA_REVALIDATED"})
         return page(request, "job.html", f"Run #{job['issue_number']} · {job_title(job)}", "job", context)
 
     @app.get("/cases", response_class=HTMLResponse)
