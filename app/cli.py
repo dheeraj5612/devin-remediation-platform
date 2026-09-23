@@ -4,20 +4,55 @@
     baseline           prove each case is weak on the real Superset checkout; writes data/live/baselines/
     bootstrap-context  create/reuse the Devin Playbook + Knowledge note; writes data/live/context.json
     doctor             list everything still missing before the live worker may run
+    revalidate         retry one infrastructure-failed PR at its unchanged SHA, without Devin calls
 
 ELI5: these commands let an operator run the safe demo, prove baselines, prepare
 the provider context, or inspect the gates before live work is allowed.
 """
 
 import argparse  # ELI5: turn command-line words into typed options.
+import fcntl  # ELI5: share the worker lock so a manual retry cannot race the worker.
 import json  # ELI5: print machine-readable command results.
 import shutil  # ELI5: remove only the simulation folder when asked.
 
 from app.cases import Registry  # ELI5: load the approved remediation cases.
 from app.config import Settings  # ELI5: load environment-backed live settings.
 from app.devin import Devin, launch_preflight  # ELI5: share the local launch gate without calling Devin.
+from app.db import Store  # ELI5: read and update the one saved failed job.
+from app.github import GitHub  # ELI5: read the candidate PR head before and after local checks.
 from app.simulation import run_demo, simulation_settings  # ELI5: run the safe local demo.
 from app.validator import Validator  # ELI5: prove a case is weak or validate its candidate.
+
+
+def revalidate_failed_job(settings: Settings, job_id: str) -> dict:
+    """Retry one LIVE infrastructure failure against the unchanged PR commit, without Devin calls."""
+    # ELI5: refuse replay unless every live safety gate remains configured.
+    if settings.mode != "LIVE" or settings.live_errors():
+        raise ValueError("LIVE configuration is not ready")
+    store = Store(settings)  # ELI5: use the existing job and event ledger; never enqueue a new job.
+    job = store.get(job_id)  # ELI5: find the exact attempt the operator named.
+    if (job.status != "FAILED" or job.validation_status != "INFRA_ERROR" or not job.devin_session_id
+            or not job.candidate_pr_number or not job.candidate_sha
+            or job.repository != settings.github_repository):
+        raise ValueError("Job is not an infrastructure-failed live candidate")
+    registry = Registry(settings)  # ELI5: reload trusted case rules instead of trusting issue text.
+    case = registry.cases[job.case_id]
+    if settings.case_issues.get(case.id) != job.issue_number:
+        raise ValueError("Issue no longer matches the approved case")
+    registry.evidence(case)  # ELI5: stale baseline proof cannot authorize a new verdict.
+    launch_preflight(settings, case, job.repository)  # ELI5: require the same local evaluator setup.
+    github = GitHub(settings)  # ELI5: GitHub, not Devin's summary, identifies the PR commit.
+    expected_branch = case.target_branch or settings.base_branch
+    candidate = github.candidate(job.candidate_pr_number, expected_branch)
+    if candidate.sha != job.candidate_sha:
+        raise ValueError("PR head changed; the saved failed SHA cannot be retried")
+    result = Validator(settings).validate(job, case, candidate)  # ELI5: rerun only local proof on this SHA.
+    current = github.candidate(job.candidate_pr_number, expected_branch)
+    if current.sha != candidate.sha:
+        raise ValueError("PR head changed during revalidation")
+    saved = store.record_infra_revalidation(job.id, candidate.sha, result.to_dict())
+    return {"job_id": saved.id, "status": saved.status, "outcome": saved.validation_status,
+            "candidate_sha": candidate.sha, "validated_sha": saved.validated_sha}
 
 
 # ELI5: this entry point chooses one bounded operator command and reports its result.
@@ -32,12 +67,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     # ELI5: allow only the four commands implemented below.
     parser.add_argument(
-        "command", choices=["demo", "doctor", "bootstrap-context", "baseline"]
+        "command", choices=["demo", "doctor", "bootstrap-context", "baseline", "revalidate"]
     )
     # ELI5: let a demo operator request a fresh simulation folder.
     parser.add_argument("--reset", action="store_true")
     # ELI5: let a demo operator open the dashboard after seeding it.
     parser.add_argument("--serve", action="store_true")
+    # ELI5: a retry must name one existing job rather than creating work from a label.
+    parser.add_argument("--job-id")
     # ELI5: read the actual command line supplied by the operator.
     args = parser.parse_args()
 
@@ -66,6 +103,17 @@ def main() -> None:
     settings = Settings()
     # ELI5: resolve the approved case list and its baseline evidence.
     registry = Registry(settings)
+    # ELI5: retrying local validation requires the worker to be stopped first.
+    if args.command == "revalidate":
+        if not args.job_id:
+            raise SystemExit("revalidate requires --job-id")
+        with (settings.storage / "worker.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit("Stop the live worker before revalidating") from None
+            print(json.dumps(revalidate_failed_job(settings, args.job_id), indent=2))
+        return
     # ELI5: baseline proves every registered case is weak before remediation is attempted.
     if args.command == "baseline":
         # ELI5: run the independent baseline check for every approved case.

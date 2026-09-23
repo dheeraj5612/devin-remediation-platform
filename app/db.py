@@ -158,6 +158,30 @@ class Store:
                 raise KeyError(job_id)
             job.next_poll_at = now() + timedelta(seconds=seconds)  # Delay polling or retry backoff.
 
+    def record_infra_revalidation(self, job_id: str, sha: str, verdict: dict) -> Job:
+        """Record an operator's exact-SHA retry of an infrastructure-only validation failure."""
+        # ELI5: make the retry and its audit event one transaction, so a crash cannot show half a verdict.
+        with self.session.begin() as session:
+            job = session.get(Job, job_id)  # ELI5: inspect the saved attempt while holding the write transaction.
+            if (job is None or self.mode != "LIVE" or job.mode != "LIVE" or job.status != "FAILED"
+                    or job.validation_status != "INFRA_ERROR" or job.candidate_sha != sha):
+                raise ValueError("Only the same failed live candidate can be revalidated")
+            outcome = verdict.get("outcome")  # ELI5: trust only a known validator outcome shape.
+            if outcome not in {"VERIFIED", "INFRA_ERROR", "NORMAL_FAILED", "REGRESSION_SURVIVED", "APPLICATION_FAILED",
+                               "INVALID_CONTROL", "NOT_VERIFIED", "SCOPE_REJECTED", "STALE_SHA"}:
+                raise ValueError("Unknown revalidation outcome")
+            if outcome == "VERIFIED" and verdict.get("evidence", {}).get("sha") != sha:
+                raise ValueError("Verified evidence must name the exact candidate SHA")
+            job.validation_status = outcome  # ELI5: keep the retried verdict even when it still fails.
+            job.validation = verdict  # ELI5: preserve the validator's detailed evidence for review.
+            job.validated_sha = sha if outcome == "VERIFIED" else None  # ELI5: only success earns a validated SHA.
+            job.failure_reason = None if outcome == "VERIFIED" else str(verdict.get("summary", "Validation failed"))[:200]
+            if outcome == "VERIFIED":
+                job.status = "VERIFIED"  # ELI5: the operator retry can repair an infrastructure-only false failure.
+                job.completed_at = now()  # ELI5: timestamp the final trusted verdict, not the earlier failed attempt.
+            self._event(session, job, "INFRA_REVALIDATED", {"outcome": outcome, "sha": sha})
+        return job
+
     @staticmethod
     def _event(session: Session, job: Job, event_type: str, details: dict | None = None) -> None:
         """Append an event row and emit a small structured log line for operators."""

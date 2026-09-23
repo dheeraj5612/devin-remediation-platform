@@ -138,6 +138,13 @@ def metrics_from_records(jobs: list[Job], events: list[Event], mode: str | None 
         and isinstance(event.details.get("outcome"), str)
         and event.details.get("outcome") in ASSESSED_OUTCOMES
     }
+    # ELI5: a manual retry may produce the first real verdict after an infrastructure-only failure.
+    uncorrected = {job.id for job in jobs if job.correction_count == 0}
+    assessed.update(
+        event.job_id for event in events
+        if event.job_id in uncorrected and event.event_type == "INFRA_REVALIDATED"
+        and isinstance(event.details, dict) and event.details.get("outcome") in ASSESSED_OUTCOMES
+    )
     # Jobs where we actually sent the one correction: the denominator for "correction recovery".
     # ELI5: collect jobs where the worker actually sent its one bounded correction.
     corrected = {event.job_id for event in events if event.job_id in job_ids and event.event_type == "CORRECTION_SENT"}

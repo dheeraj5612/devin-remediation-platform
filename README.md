@@ -52,7 +52,7 @@ The public overview at `/` links to a separately dated archive at `/evidence`; a
 
 The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists in the underlying report. The UI additionally warns when the candidate and validated SHA do not match; it does not endorse an unlinked verified state. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
 
-For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). It covers what problem the platform solves, how the signed event and independent oracle fit together, why Devin is used for investigation, and the gates for a one-finding pilot. The script distinguishes deterministic simulation evidence from fields available only after a configured live run. For the exact routes, payloads, state transitions, and adapter calls, see [`docs/app-walkthrough.md`](docs/app-walkthrough.md).
+For a four-minute walkthrough of the live issue #9 to PR #10 run, use [`docs/demo-script.md`](docs/demo-script.md). It shows the signed trigger, Devin API activity, independent exact-SHA verdict, and safe recovery from a local validator error. For exact routes, payloads, state transitions, and adapter calls, see [`docs/app-walkthrough.md`](docs/app-walkthrough.md).
 
 ## Why Devin
 
@@ -102,6 +102,18 @@ uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 # Separate terminal, same environment and working directory:
 python worker.py
 ```
+
+If a candidate stops with `INFRA_ERROR`, fix the evaluator setup and rebuild all
+baselines. Stop the worker, then retry the saved PR without creating another
+Devin session:
+
+```bash
+python -m app.cli revalidate --job-id <existing-job-id>
+```
+
+This operator command requires the same approved issue, unchanged open PR head,
+current baseline proof, and an available worker lock. It records `VERIFIED` only
+when the independent checks pass at the saved SHA.
 
 `.env` is ignored by Git and excluded from the Docker image. `DEVIN_MAX_ACU` defaults to 3 per session, and the application never creates a fresh session for a correction. No API secret is sent in the candidate subprocess environment or included in event logs.
 
@@ -157,11 +169,11 @@ The pinned source comparator recorded baseline `dedfe23...` as `REGRESSION` and 
 
 The earlier `src/drp` prototype is consolidated into this smaller `app/` layout rather than keeping two competing implementations. Its datetime-normalization finding and original mutant patch are preserved unchanged under `findings/` as prior research. They are **not** an active registry entry or evidence from this build. Existing `DRP_*` configuration and databases are not migrated; use `.env.example` and a fresh live data directory. PR #2's injected-client authentication concern is covered in the replacement client's tests.
 
-This is a targeted take-home, not a general mutation-testing service. Two selected test-quality node IDs and one registered application oracle are evaluated, not the full Superset suite. Human review must check the complete diff and surrounding tests. Prompt injection and malicious candidate code are not solved; scope checks, evidence checks, and process environment scrubbing reduce mistakes but do not isolate hostile execution. The dashboard has no authentication, SQLite supports one worker, bootstrap is an operator-only command, and terminal jobs have no automatic retry/reset endpoint. Production work would start with isolated credential-free runners, access control, and an explicit operator reconciliation workflow.
+This is a targeted take-home, not a general mutation-testing service. Three selected test-quality node IDs and one registered application oracle are evaluated, not the full Superset suite. Human review must check the complete diff and surrounding tests. Prompt injection and malicious candidate code are not solved; scope checks, evidence checks, and process environment scrubbing reduce mistakes but do not isolate hostile execution. The dashboard has no authentication, SQLite supports one worker, bootstrap and infrastructure revalidation are operator-only commands, and terminal jobs have no automatic retry/reset endpoint. Production work would start with isolated credential-free runners, access control, and an explicit operator reconciliation workflow.
 
 ## Five-minute walkthrough
 
-Use [`docs/demo-script.md`](docs/demo-script.md) for the five-minute presentation. Start at `app/main.py` for signed admission, `app/orchestrator.py` for durable intent and bounded correction, and `app/validator.py` for independent test-quality or application acceptance. Finish on the simulation dashboard and explain the evidence badges, denominators, restart event, and the difference between simulation and a measured live result.
+Use [`docs/demo-script.md`](docs/demo-script.md) for the four-minute live presentation. Start with the issue #9 trigger, show `app/main.py` for signed admission, `app/orchestrator.py` for durable intent, and `app/validator.py` for independent acceptance. Finish on the live job's exact-SHA proof and human review gate. The simulation remains a separate optional way to show correction and escalation paths.
 
 
 ### Design and browser review

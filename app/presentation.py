@@ -17,6 +17,7 @@ SHORT_TITLES = {
     "import-unparseable-yaml": "Malformed YAML import",
     "histogram-invalid-column": "Invalid histogram column",
     "schema-missing-engine": "Missing schema engine",
+    "superset-normalize-dttm-edge-cases": "Datetime edge cases",
 }
 
 # ELI5: keep provider operation names compact and consistent across dashboard surfaces.

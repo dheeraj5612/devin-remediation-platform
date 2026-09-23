@@ -82,7 +82,24 @@ The HMAC covers the original bytes before JSON parsing. The repository, issue,
 label, and case binding must all match. A duplicate delivery returns the
 original job instead of launching another one.
 
-## Worked example: issue 7 to PR 8
+## Current live example: issue 9 to PR 10
+
+The signed GitHub label delivery for
+[issue #9](https://github.com/dheeraj5612/superset/issues/9) created one live
+job. Devin opened [PR #10](https://github.com/dheeraj5612/superset/pull/10),
+which changes only `tests/unit_tests/utils/test_date_parsing.py`. The trusted
+one-row datetime challenge passed on correct code and failed by assertion on
+the registered mutant at commit
+`f2cf1e45117f8ac1859d1dfcfb4569cd1f9e2f35`.
+
+The first candidate check stopped with an infrastructure error because macOS
+gave pytest's temporary checkout two path spellings. After fixing that path
+and refreshing all baseline proofs, the operator revalidated the unchanged
+PR head with no new Devin session. The job is `VERIFIED`, the validated SHA
+matches the candidate SHA, and the PR remains open for human review. See
+[`demo-script.md`](demo-script.md) for the short screen-by-screen walkthrough.
+
+## Historical application example: issue 7 to PR 8
 
 Issue 7 is registered as `import-unparseable-yaml`. It targets
 `dheeraj5612/superset`, the `remediation-import-yaml` branch, and baseline
@@ -214,10 +231,11 @@ control-plane records and still needs human review. The linked
 
 ## Hard limits
 
-- The registry covers two selected test-quality cases and one application
+- The registry covers three selected test-quality cases and one application
   oracle, not the full Superset suite.
-- The historical live record covers malformed YAML only. It records no merge,
-  customer impact, ROI, or independently measured provider cost.
+- The historical archive covers malformed YAML; the current live job covers
+  one datetime test regression. Neither records a merge, customer impact, ROI,
+  or independently measured provider cost.
 - The dashboard has no authentication. Keep operational pages private and
   expose only the webhook path for a pilot.
 - SQLite is intended for one worker. A deadline stops local polling but does not
