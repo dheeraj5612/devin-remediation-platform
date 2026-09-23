@@ -4,18 +4,23 @@ Target length: 4:35. The audience is a VP of Engineering or senior IC. Keep
 the browser read-only and keep the two evidence boundaries visible:
 
 - `/evidence` is the captured live application result for issue `7` and PR `8`.
-- `/dashboard` after `make demo` is a credential-free simulation with six jobs,
-  four `VERIFIED`, two `ESCALATED`, six fake sessions, and three corrections.
+- `http://127.0.0.1:8001/dashboard` is the prepared credential-free simulation
+  preview; reproducibly, `make demo` serves the same simulation at
+  `http://127.0.0.1:8000`. It has six jobs, four `VERIFIED`, two `ESCALATED`,
+  six fake sessions, and three corrections.
 
-The captured PR was open and unmerged. Do not describe the archive as a current
-run, a merge, a cost result, or a customer impact result. Do not describe the
-simulation's provider timings as live timings.
+The archive preserves its capture state: PR 8 was open and unmerged at capture.
+Do not describe the archive as a current run, a merge, a cost result, or a
+customer impact result. Do not describe the simulation's provider timings as
+live timings.
 
 ## Prep checklist
 
-1. From `/private/tmp/devintrace-review-fixes`, run `make demo`. This starts the
-   simulation at `http://127.0.0.1:8000` and makes no Devin or GitHub calls.
-2. Open these routes in separate tabs: `/evidence`, `/dashboard`,
+1. Use the prepared simulation preview at
+   `http://127.0.0.1:8001/dashboard`. To reproduce it locally, run `make demo`,
+   which serves at `http://127.0.0.1:8000` and makes no Devin or GitHub calls.
+   Use the corresponding route on whichever simulation server is running.
+2. In the simulation tab, open these routes: `/evidence`, `/dashboard`,
    `/dashboard?view=attention`, `/cases#readiness`, and `/report.json`.
 3. On `/evidence`, confirm the archive shows issue `7`, PR `8`, application
    `PASS`, and candidate equals validated SHA
@@ -23,11 +28,16 @@ simulation's provider timings as live timings.
 4. On `/dashboard`, confirm the `SIMULATION` banner, six jobs, the `Devin API
    activity` card, and the `Export all evidence` link. Click issue `105` once
    during the recording to open `/jobs/{job_id}`.
-5. Keep `/cases#readiness` ready for the final shot. After `make demo`, this
-   route shows the `SIMULATION` and `NOT_EVALUATED` gates; it does not evaluate
-   LIVE readiness or display the evaluator fingerprint mismatch. Explain the
-   archived evidence mismatch separately: its fingerprint differs from the
-   current checkout, so a LIVE pilot needs fresh baseline evidence.
+5. Optional LIVE readiness prep: use the local `dheeraj5612/superset` checkout
+   and the read-only view at
+   `http://127.0.0.1:8010/cases#readiness`. Confirm the three baselines are
+   `CONFIRMED` (`hist/schema` normal `PASS`, `hist/schema` mutant `PASS`, and
+   application `REGRESSION`), `bootstrap-context` completed, and `make doctor`
+   reports `LIVE ready: true`. The page shows `Configuration gates pass` and
+   seven `PASS` checks. This view contains no new live session or provider API
+   operation trace. Keep it in a separate tab from the simulation; if it is
+   unavailable, use the simulation readiness route and describe it as
+   `SIMULATION` with `NOT_EVALUATED` gates.
 
 ## Shot-by-shot script
 
@@ -136,22 +146,36 @@ restart case and its reconciliation row in the API card.
 
 ### 3:35 to 4:05, When: show the customer pilot gate
 
-**Route:** `/cases#readiness`
+**Route:** Optional LIVE read-only view at
+`http://127.0.0.1:8010/cases#readiness`; otherwise the simulation view at
+`http://127.0.0.1:8001/cases#readiness` (`8000` when recreated with `make demo`)
 
-**Show:** The `Simulation only` label, the `SIMULATION` execution-mode check,
-and the `NOT_EVALUATED` configuration-gates check. The simulation page does not
-display the LIVE evaluator fingerprint mismatch.
+**Show (LIVE option):** `Configuration gates pass` and the seven `PASS` checks.
+The separate `make doctor` CLI result is `LIVE ready: true`.
 
-**Say:**
+**Show (portable simulation):** The `Simulation only` label, the `SIMULATION`
+execution-mode check, and the `NOT_EVALUATED` configuration-gates check.
+
+**Say (LIVE option):**
+
+> The prepared local pilot gate is ready. The dedicated `dheeraj5612/superset`
+> checkout has three `CONFIRMED` baselines: `hist/schema` normal `PASS`,
+> `hist/schema` mutant `PASS`, and application `REGRESSION`. `bootstrap-context`
+> completed, `make doctor` reports `LIVE ready: true`, and this read-only page
+> shows `Configuration gates pass` with seven `PASS` checks. This proves current
+> readiness only; no new live remediation session was run in this refreshed
+> setup, and no new provider API operation trace is shown.
+> The archive remains historical capture evidence and the dashboard remains
+> synthetic.
+
+**Say (portable simulation):**
 
 > This page is intentionally simulation-only. It proves the demo cannot enable
-> paid calls, while its LIVE configuration gates remain unevaluated. The
-> archived application evidence has a fingerprint that differs from the
-> current checkout, so it is historical proof rather than current LIVE
-> baseline proof. Before a customer pilot, regenerate fresh baseline evidence
-> with the current case and harness fingerprints, prepare the disposable
-> validator, bootstrap the repo context, and run `make doctor` in LIVE mode.
-> Proceed only after every gate passes and a human approves the pilot.
+> paid calls while its LIVE configuration gates remain unevaluated. The archive
+> is historical proof from the capture state, and the dashboard is synthetic.
+> Before a customer pilot, prepare current baseline evidence, bootstrap the repo
+> context, run `make doctor` in LIVE mode, and proceed only after every gate
+> passes and a human approves the pilot.
 
 ### 4:05 to 4:35, close on portable evidence
 
@@ -176,5 +200,8 @@ provider activity summary. Finish on the dashboard's human review gate.
   zero-duration timing is a deterministic fake-provider value.
 - `SIMULATION` counts are six jobs, four `VERIFIED`, two `ESCALATED`, six fake
   sessions, and three correction messages. They are not live customer metrics.
+- The optional LIVE readiness view is current local configuration and baseline
+  evidence only. It contains no new live session or provider API operation
+  trace.
 - The source comparator is validator evidence for the known baseline, not a
   Devin result. `/evidence` is separate from current dashboard metrics.
