@@ -230,6 +230,42 @@ def test_duplicate_tag_and_broken_cursor_fail_closed(live):
         devin.find_session("job")  # Trigger the broken-cursor guard.
 
 
+def test_operation_trace_records_safe_success_failure_and_ambiguity(live):
+    """Emit bounded operation outcomes without copying provider response bodies."""
+
+    records = []  # Capture the adapter callback instead of writing a durable event.
+    sentinel = "PROVIDER_BODY_SENTINEL_prompt_token_message"  # Model a body that must stay outside telemetry.
+
+    def handler(req):
+        """Return one success, one provider error, and one ambiguous reconciliation list."""
+
+        if req.url.path.endswith("/sessions/fail"):
+            return httpx.Response(503, text=sentinel)  # A retryable response body must not reach the recorder.
+        if req.url.path.endswith("/sessions"):
+            record = {"session_id": "found", "status": "running", "tags": ["drp-job"]}
+            return httpx.Response(200, json={"items": [record, record], "has_next_page": False})
+        return httpx.Response(200, json={"session_id": "ok", "status": "running"})
+
+    devin = adapter(live, handler)  # Use the in-process provider boundary.
+    with devin.operation_trace(lambda operation, outcome, details: records.append((operation, outcome, details))):
+        assert devin.get_session("ok").session_id == "ok"  # Record one successful poll.
+    with pytest.raises(RemoteError):  # A provider failure remains a safe adapter exception.
+        with devin.operation_trace(lambda operation, outcome, details: records.append((operation, outcome, details))):
+            devin.get_session("fail")  # Record one retryable provider failure.
+    with pytest.raises(RemoteError, match="Multiple sessions"):  # Ambiguous recovery must fail closed.
+        with devin.operation_trace(lambda operation, outcome, details: records.append((operation, outcome, details))):
+            devin.find_session("job")  # Record the ambiguity without choosing a session.
+
+    assert [(operation, outcome) for operation, outcome, _ in records] == [
+        ("session_poll", "SUCCEEDED"),
+        ("session_poll", "RETRYABLE_ERROR"),
+        ("list_reconcile", "AMBIGUOUS"),
+    ]
+    assert sentinel not in json.dumps(records)  # Provider bodies and prompt-like text stay out of trace details.
+    assert all(set(details) <= {"latency_ms", "session_id", "match_count", "attachment_url_present"}
+               for _, _, details in records)
+
+
 def test_context_bootstrap_is_reusable_and_uses_notes_endpoint(live):
     """Create the context bundle once and reuse it on a second bootstrap call."""
 
@@ -260,6 +296,10 @@ def test_context_bootstrap_is_reusable_and_uses_notes_endpoint(live):
     assert live.github_repository in resources["knowledge/notes"][0]["trigger"]
     assert "application" in resources["knowledge/notes"][0]["trigger"]
     assert "test-quality" in resources["knowledge/notes"][0]["trigger"]
+    assert first["bootstrap"]["playbook"]["action"] == "created"
+    assert first["bootstrap"]["knowledge"]["action"] == "created"
+    assert '"body"' not in json.dumps(first)
+    assert "body_sha256" in json.dumps(first)
 
 
 def test_context_body_change_gets_new_name_without_overwriting_old_resource(live, monkeypatch):

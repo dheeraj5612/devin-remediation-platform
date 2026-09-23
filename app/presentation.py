@@ -19,6 +19,16 @@ SHORT_TITLES = {
     "schema-missing-engine": "Missing schema engine",
 }
 
+# ELI5: keep provider operation names compact and consistent across dashboard surfaces.
+PROVIDER_OPERATION_LABELS = {
+    "attachment_upload": "Attachment upload",
+    "session_create": "Session create",
+    "session_poll": "Session poll",
+    "list_reconcile": "Session reconcile",
+    "correction_message": "Correction message",
+}
+PROVIDER_OPERATION_ORDER = tuple(PROVIDER_OPERATION_LABELS)
+
 
 def human_time(value: str | None, short: bool = False) -> str:
     """Format persisted ISO timestamps in UTC, leaving missing dates explicit."""
@@ -38,6 +48,79 @@ def human_time(value: str | None, short: bool = False) -> str:
 def job_title(job: dict[str, Any]) -> str:
     """Prefer a short domain label, retaining the full contract title in detail."""
     return SHORT_TITLES.get(job["case_id"], job["case_title"] or job["case_id"])
+
+
+def _safe_nonnegative(value: Any, *, decimal: bool = False) -> int | float | None:
+    """Keep aggregate values numeric before handing them to a template."""
+    # ELI5: malformed report values become missing rather than visible fake measurements.
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    return round(value, 3) if decimal else value
+
+
+def provider_api_card(summary: dict[str, Any] | None, bootstrap: dict[str, Any] | None = None,
+                     mode: str | None = None) -> dict[str, Any]:
+    """Prepare a compact, safe provider activity card for dashboard templates."""
+    # ELI5: tolerate older reports that predate provider operation summaries.
+    summary = summary if isinstance(summary, dict) else {}
+    selected_mode = summary.get("mode") if summary.get("mode") in {"LIVE", "SIMULATION"} else mode
+    selected_mode = selected_mode or "NOT_RECORDED"
+    event_count = _safe_nonnegative(summary.get("event_count")) or 0
+    success_count = _safe_nonnegative(summary.get("success_count")) or 0
+    event_count = int(event_count)
+    success_count = min(int(success_count), event_count)
+    latency_raw = summary.get("latency_ms") if isinstance(summary.get("latency_ms"), dict) else {}
+    latency = {
+        "count": int(_safe_nonnegative(latency_raw.get("count")) or 0),
+        "median": _safe_nonnegative(latency_raw.get("median"), decimal=True),
+        "average": _safe_nonnegative(latency_raw.get("average"), decimal=True),
+    }
+    operation_map = summary.get("operations") if isinstance(summary.get("operations"), dict) else {}
+    operation_rows = []
+    for key in PROVIDER_OPERATION_ORDER:
+        raw = operation_map.get(key) if isinstance(operation_map.get(key), dict) else {}
+        count = int(_safe_nonnegative(raw.get("event_count")) or 0)
+        successes = min(int(_safe_nonnegative(raw.get("success_count")) or 0), count)
+        raw_latency = raw.get("latency_ms") if isinstance(raw.get("latency_ms"), dict) else {}
+        operation_rows.append({
+            "key": key,
+            "label": PROVIDER_OPERATION_LABELS[key],
+            "event_count": count,
+            "success_count": successes,
+            "latency_ms": {
+                "count": int(_safe_nonnegative(raw_latency.get("count")) or 0),
+                "median": _safe_nonnegative(raw_latency.get("median"), decimal=True),
+            },
+        })
+    # ELI5: an omitted bootstrap summary remains visibly unrecorded on every surface.
+    raw_bootstrap = bootstrap if isinstance(bootstrap, dict) else summary.get("bootstrap")
+    raw_bootstrap = raw_bootstrap if isinstance(raw_bootstrap, dict) else {}
+    bootstrap_status = raw_bootstrap.get("status") if raw_bootstrap.get("status") in {"RECORDED", "PARTIAL", "NOT_RECORDED"} else "NOT_RECORDED"
+
+    def resource(key: str) -> dict[str, str]:
+        """Keep only the status and create/reuse action for one bootstrap resource."""
+        # ELI5: IDs, names, and hashes never enter the template view model.
+        raw = raw_bootstrap.get(key) if isinstance(raw_bootstrap.get(key), dict) else {}
+        status = raw.get("status") if raw.get("status") in {"CONFIGURED", "NOT_RECORDED"} else "NOT_RECORDED"
+        action = raw.get("action") if raw.get("action") in {"created", "reused", "NOT_RECORDED"} else "NOT_RECORDED"
+        return {"status": status, "action": action}
+
+    return {
+        "mode": selected_mode,
+        "status": "RECORDED" if event_count else "NOT_RECORDED",
+        "event_count": event_count,
+        "success_count": success_count,
+        "failure_count": max(0, event_count - success_count),
+        "latency_ms": latency,
+        "timing_label": "Synthetic zero-duration timing" if selected_mode == "SIMULATION" else "Recorded local elapsed time",
+        "operation_rows": operation_rows,
+        "bootstrap": {
+            "status": bootstrap_status,
+            "timestamp": raw_bootstrap.get("timestamp") if isinstance(raw_bootstrap.get("timestamp"), str) else "NOT_RECORDED",
+            "playbook": resource("playbook"),
+            "knowledge": resource("knowledge"),
+        },
+    }
 
 
 def group_matches(job: dict[str, Any], view: str) -> bool:
@@ -91,6 +174,8 @@ def workbench(report: dict[str, Any], query: str = "", view: str = "all",
         "previous": url(page=page - 1), "next": url(page=page + 1),
         "return_query": urlencode({**params, "page": page}),
         "filtered": bool(query or view != "all" or kind != "all"),
+        # ELI5: keep the dashboard card read-only and derived from the canonical report.
+        "provider_api": provider_api_card(report.get("provider_api"), mode=report.get("truth", {}).get("mode")),
     }
 
 

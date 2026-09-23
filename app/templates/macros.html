@@ -12,3 +12,28 @@
 {% macro sha(value, label, id) -%}
 <div class="sha-field"><span class="eyebrow">{{ label }}</span><div><code id="{{ id }}">{{ value or 'Not recorded' }}</code>{% if value %}<button class="copy-button js-only" type="button" data-copy="{{ id }}" aria-label="Copy {{ label|lower }}">Copy</button>{% endif %}</div></div>
 {%- endmacro %}
+{# ELI5: this card shows persisted provider operation records without provider payload text. #}
+{% macro provider_api_card(card, compact=false) -%}
+<section class="provider-api-card {{ 'provider-api-card-compact' if compact else '' }}" aria-labelledby="provider-api-heading{{ '-compact' if compact else '' }}">
+  <div class="provider-api-heading">
+    <div><p class="eyebrow">{{ card.mode }} / persisted trace</p><h2 id="provider-api-heading{{ '-compact' if compact else '' }}">Devin API activity</h2><p class="micro">Operation records from the selected evidence store.</p></div>
+    <span class="provider-api-status {{ 'is-recorded' if card.status == 'RECORDED' else 'is-missing' }}">{{ card.status|replace('_', ' ')|title }}</span>
+  </div>
+  {% if card.event_count %}
+  <div class="provider-api-totals" aria-label="Provider activity totals">
+    <div><strong>{{ card.event_count }}</strong><span>operation records</span></div>
+    <div><strong>{{ card.success_count }}</strong><span>successful</span></div>
+    <div><strong>{% if card.latency_ms.median is not none %}{{ card.latency_ms.median }} ms{% else %}NOT_RECORDED{% endif %}</strong><span>{{ card.timing_label }}</span></div>
+  </div>
+  <ul class="provider-api-operations" aria-label="Provider operation records">
+    {% for row in card.operation_rows if row.event_count %}<li><span>{{ row.label }}</span><span class="provider-api-count">{{ row.success_count }}/{{ row.event_count }} succeeded</span><span class="provider-api-latency">{% if row.latency_ms.median is not none %}{{ row.latency_ms.median }} ms median{% else %}NOT_RECORDED{% endif %}</span></li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="provider-api-empty"><strong>NOT_RECORDED</strong> No Devin operation records are persisted for this mode.</p>
+  {% endif %}
+  <div class="provider-bootstrap" aria-label="{{ 'Current mode context' if compact else 'Bootstrap resource evidence' }}">
+    <div><span class="eyebrow">{{ 'Current mode context' if compact else 'Bootstrap resources' }}</span><span class="provider-bootstrap-status">{{ card.bootstrap.status|replace('_', ' ')|title }}</span>{% if compact %}<span class="micro">Shared setup metadata, not job provenance.</span>{% endif %}</div>
+    <dl><div><dt>Playbook</dt><dd>{{ card.bootstrap.playbook.status|replace('_', ' ')|title }}{% if card.bootstrap.playbook.action != 'NOT_RECORDED' %} · {{ card.bootstrap.playbook.action }}{% endif %}</dd></div><div><dt>Knowledge</dt><dd>{{ card.bootstrap.knowledge.status|replace('_', ' ')|title }}{% if card.bootstrap.knowledge.action != 'NOT_RECORDED' %} · {{ card.bootstrap.knowledge.action }}{% endif %}</dd></div><div><dt>Recorded</dt><dd>{% if card.bootstrap.timestamp == 'NOT_RECORDED' %}NOT_RECORDED{% else %}{{ card.bootstrap.timestamp|clock }}{% endif %}</dd></div></dl>
+  </div>
+</section>
+{%- endmacro %}

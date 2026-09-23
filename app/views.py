@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.cases import Registry
 from app.config import ROOT, Settings
 from app.db import Store
-from app.presentation import human_time, job_title, linked_verdict, recorded_evidence, workbench
+from app.presentation import human_time, job_title, linked_verdict, provider_api_card, recorded_evidence, workbench
 from app.report import build_report
 
 
@@ -76,6 +76,11 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
                     "contract": "Original contract unavailable. Inspect the exported run before review.",
                     "acceptance": "Not available", "allowed_paths": [], "acceptance_test": None}
         context.update(selected_job=job, selected_case=case,
+                       selected_provider_api=provider_api_card(
+                           job.get("provider_api"),
+                           bootstrap=context["report"].get("provider_api", {}).get("bootstrap"),
+                           mode=settings.mode,
+                       ),
                        milestone_types={"QUEUED", "SESSION_ATTACHED", "PR_OPENED", "EVALUATED",
                                         "CORRECTION_SENT", "VERIFIED", "ESCALATED", "FAILED"})
         return page(request, "job.html", f"Run #{job['issue_number']} · {job_title(job)}", "job", context)

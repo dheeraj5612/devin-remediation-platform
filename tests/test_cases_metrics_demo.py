@@ -182,6 +182,16 @@ def test_simulation_exercises_real_state_machine_with_separate_storage(settings)
         assert any(job["case_id"] == "import-unparseable-yaml" for job in report["jobs"])
         # ELI5: every demo job is labeled synthetic instead of looking like live proof.
         assert all(job["evidence_level"] == "SIMULATED" for job in report["jobs"])
+        issue_104 = next(job for job in report["jobs"] if job["issue_number"] == 104)
+        issue_104_api = [event for event in issue_104["events"] if event["type"] == "DEVIN_API_OPERATION"]
+        assert [(event["details"]["operation_key"], event["details"]["outcome"]) for event in issue_104_api] == [
+            ("attachment_upload", "SUCCEEDED"),
+            ("session_create", "RETRYABLE_ERROR"),
+            ("list_reconcile", "FOUND"),
+            ("session_poll", "SUCCEEDED"),
+        ]
+        assert len([event for event in issue_104_api if event["details"]["operation_key"] == "session_create"]) == 1
+        assert report["provider_api"]["operations"]["list_reconcile"]["outcome_counts"] == {"FOUND": 1}
         # ELI5: raw failure text must never be part of the customer report.
         assert all("failure_reason" not in job for job in report["jobs"])
         # ELI5: the truth language must remain consistent with the simulation boundary.
@@ -244,6 +254,33 @@ def test_report_redacts_untrusted_event_details(settings, store):
     assert "javascript:" not in export
     # ELI5: the allow-listed outcome remains useful after redaction.
     assert '"outcome":"VERIFIED"' in export
+
+
+def test_report_redacts_provider_payload_details(settings, store):
+    """Keep provider operation counts while excluding payload-shaped event fields."""
+
+    # ELI5: model a trace row that accidentally receives every sensitive payload field.
+    job, _ = store.enqueue("delivery-provider-redaction", settings.github_repository, 778,
+                           "histogram-invalid-column")
+    sentinel = "PROVIDER_PROMPT_MESSAGE_TOKEN_BODY_SENTINEL"
+    store.change(job.id, "DEVIN_API_OPERATION", details={
+        "operation": "session_create", "operation_key": "session_create", "outcome": "SUCCEEDED",
+        "mode": "SIMULATION", "latency_ms": 0, "session_id": "sim-safe",
+        "prompt": sentinel, "message": sentinel, "token": sentinel, "body": sentinel,
+        "provider_response": sentinel, "url": sentinel,
+    })
+    with TestClient(create_app(settings)) as client:
+        # ELI5: both HTML and JSON must expose the safe count without the provider payload.
+        page = client.get("/dashboard").text
+        export = client.get("/report.json").text
+        report = client.get("/report.json").json()
+    assert sentinel not in page and sentinel not in export
+    assert report["provider_api"]["event_count"] == 1
+    details = report["jobs"][0]["events"][-1]["details"]
+    assert details == {
+        "operation": "session_create", "operation_key": "session_create", "outcome": "SUCCEEDED",
+        "mode": "SIMULATION", "latency_ms": 0, "session_id": "sim-safe",
+    }
 
 
 def test_latencies_and_denominators_exclude_infrastructure(settings, store):

@@ -11,7 +11,9 @@ import hashlib  # Hash context bodies so provider resource names cannot collide 
 import json
 import os  # Check that the configured local interpreter is executable before spending.
 import re
-from typing import Any
+from contextlib import contextmanager
+from time import perf_counter
+from typing import Any, Callable, Iterator
 from urllib.parse import urlparse
 
 import httpx
@@ -19,7 +21,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.cases import Case, Registry
 from app.config import Settings
-from app.models import Job
+from app.models import Job, now
 
 # ELI5: attach these standing instructions as a Playbook to constrain every paid session.
 PLAYBOOK = """Investigate the reported issue before editing. Inspect the real behavior,
@@ -37,6 +39,9 @@ OUTPUT_SCHEMA = {
     "type": "object", "properties": {"pr_url": {"type": "string"}, "summary": {"type": "string"}},
     "required": ["pr_url", "summary"], "additionalProperties": False,
 }
+
+# ELI5: the orchestrator supplies this callback so API work can become a safe local event.
+OperationRecorder = Callable[[str, str, dict[str, Any]], None]
 
 
 def context_resource_name(repository: str, body: str) -> str:
@@ -63,6 +68,10 @@ class RemoteError(RuntimeError):
         self.retryable = retryable
         # ELI5: preserve the provider's requested delay, which the worker will cap separately.
         self.retry_after = retry_after
+
+
+class AmbiguousSessionError(RemoteError):
+    """A job tag matched multiple provider sessions and needs manual reconciliation."""
 
 
 def http_client(base_url: str, token: str, extra_headers: dict[str, str] | None = None) -> httpx.Client:
@@ -197,6 +206,68 @@ class Devin:
         self.client = client or http_client(f"https://api.devin.ai/v3/organizations/{settings.devin_org_id}/", token)
         # ELI5: set the header even on an injected client so tests see the same authenticated shape.
         self.client.headers["Authorization"] = f"Bearer {token}"  # also covers an injected (test) client
+        # ELI5: the worker temporarily installs a recorder while one job uses this adapter.
+        self._operation_recorder: OperationRecorder | None = None
+
+    @contextmanager
+    def operation_trace(self, recorder: OperationRecorder) -> Iterator[None]:
+        """Temporarily route safe operation summaries to the durable job event store."""
+        # ELI5: save any outer recorder so nested or restarted workers do not lose their trace.
+        previous = self._operation_recorder
+        # ELI5: install only the callback for this short provider operation window.
+        self._operation_recorder = recorder
+        try:
+            # ELI5: let the provider method run while its safe summaries are captured.
+            yield
+        finally:
+            # ELI5: restore the previous callback before another job can use this adapter.
+            self._operation_recorder = previous
+
+    def _record_operation(self, operation: str, outcome: str, *, latency_ms: int,
+                          **details: Any) -> None:
+        """Send only allow-listed operation facts to the orchestrator callback."""
+        # ELI5: an absent recorder is normal for CLI bootstrap and direct adapter tests.
+        if self._operation_recorder is None:
+            return
+        # ELI5: the callback receives no prompt, message, token, URL, or provider response body.
+        safe_details = {key: value for key, value in details.items()
+                        if key in {"session_id", "match_count", "attachment_url_present"}}
+        safe_details["latency_ms"] = max(0, int(latency_ms))
+        self._operation_recorder(operation, outcome, safe_details)
+
+    @staticmethod
+    def _failure_outcome(exc: Exception) -> str:
+        """Map a safe adapter error to a small telemetry outcome vocabulary."""
+        # ELI5: a duplicate session match needs operator reconciliation, not a blind retry.
+        if isinstance(exc, AmbiguousSessionError):
+            return "AMBIGUOUS"
+        # ELI5: network and rate-limit errors are visibly retryable without exposing their body.
+        if isinstance(exc, RemoteError) and exc.retryable:
+            return "RETRYABLE_ERROR"
+        # ELI5: every other provider or validation failure is a bounded failed operation.
+        return "FAILED"
+
+    def _timed_operation(self, operation: str, fn: Callable[[], Any], *,
+                         success_outcome: Callable[[Any], str] | None = None,
+                         details_factory: Callable[[Any], dict[str, Any]] | None = None) -> Any:
+        """Run one provider action and emit a safe outcome with local elapsed time."""
+        # ELI5: start a monotonic clock so wall-clock changes cannot make latency negative.
+        started = perf_counter()
+        try:
+            # ELI5: perform exactly one request or bounded provider operation.
+            result = fn()
+        except Exception as exc:
+            # ELI5: persist the failed attempt without copying the exception's provider details.
+            self._record_operation(operation, self._failure_outcome(exc),
+                                    latency_ms=round((perf_counter() - started) * 1000))
+            raise
+        # ELI5: classify a successful lookup as found or missing when reconciliation needs it.
+        outcome = success_outcome(result) if success_outcome else "SUCCEEDED"
+        # ELI5: keep only safe identifiers and booleans from the validated result.
+        details = details_factory(result) if details_factory else {}
+        self._record_operation(operation, outcome,
+                               latency_ms=round((perf_counter() - started) * 1000), **details)
+        return result
 
     @staticmethod
     def parse(data: Any) -> SessionState:
@@ -250,19 +321,32 @@ class Devin:
 
     def find_session(self, job_id: str) -> SessionState | None:
         """Recover a session by its job tag. Used when we sent a create call but never got the reply."""
-        # ELI5: list sessions and keep only the exact job tag made during creation.
-        matches = [item for item in self.list_resources("sessions") if f"drp-{job_id}" in item.get("tags", [])]
-        # ELI5: multiple matches make idempotent recovery ambiguous, so stop safely.
-        if len(matches) > 1:
-            # ELI5: do not guess which provider session belongs to the job.
-            raise RemoteError("Multiple sessions match this job; manual reconciliation required")
-        # ELI5: parse the one matching record, or report that no session exists yet.
-        return self.parse(matches[0]) if matches else None
+        def reconcile() -> SessionState | None:
+            """List sessions and parse the one exact job tag, if present."""
+            # ELI5: list sessions and keep only the exact job tag made during creation.
+            matches = [item for item in self.list_resources("sessions") if f"drp-{job_id}" in item.get("tags", [])]
+            # ELI5: multiple matches make idempotent recovery ambiguous, so stop safely.
+            if len(matches) > 1:
+                # ELI5: do not guess which provider session belongs to the job.
+                raise AmbiguousSessionError("Multiple sessions match this job; manual reconciliation required")
+            # ELI5: parse the one matching record, or report that no session exists yet.
+            return self.parse(matches[0]) if matches else None
+
+        # ELI5: record FOUND or NOT_FOUND without copying the listed provider records.
+        return self._timed_operation(
+            "list_reconcile", reconcile,
+            success_outcome=lambda result: "FOUND" if result is not None else "NOT_FOUND",
+            details_factory=lambda result: {"session_id": result.session_id} if result is not None else {},
+        )
 
     def get_session(self, session_id: str) -> SessionState:
         """Fetch one provider session by its persisted identifier."""
-        # ELI5: fetch and validate the exact persisted provider identity.
-        return self.parse(request(self.client, "GET", f"sessions/{session_id}"))
+        # ELI5: fetch and validate the exact persisted provider identity while timing one poll.
+        return self._timed_operation(
+            "session_poll",
+            lambda: self.parse(request(self.client, "GET", f"sessions/{session_id}")),
+            details_factory=lambda result: {"session_id": result.session_id},
+        )
 
     def create_session(self, job: Job, case: Case) -> SessionState:
         """Start the paid Devin session for one case.
@@ -281,14 +365,24 @@ class Devin:
         agent_case = case.model_dump(exclude={"inspection"})
         # ELI5: keep the local frozen case and its fingerprint unchanged while minimizing agent context.
         artifact = {"case": agent_case, "baseline_proof": evidence}
-        # ELI5: upload that evidence through the provider before creating the session.
-        attachment = request(self.client, "POST", "attachments", files={
-            "file": (f"{case.id}.json", json.dumps(artifact).encode(), "application/json"),
-        })
-        # ELI5: require a usable attachment URL before the prompt can reference it.
-        if not isinstance(attachment, dict) or not isinstance(attachment.get("url"), str):
-            # ELI5: stop before a session can be created without its evidence attachment.
-            raise RemoteError("Invalid attachment response")
+        def upload_attachment() -> dict[str, Any]:
+            """Upload the evidence and return only the validated response shape."""
+            # ELI5: upload that evidence through the provider before creating the session.
+            attachment = request(self.client, "POST", "attachments", files={
+                "file": (f"{case.id}.json", json.dumps(artifact).encode(), "application/json"),
+            })
+            # ELI5: require a usable attachment URL before the prompt can reference it.
+            if not isinstance(attachment, dict) or not isinstance(attachment.get("url"), str):
+                # ELI5: stop before a session can be created without its evidence attachment.
+                raise RemoteError("Invalid attachment response")
+            # ELI5: return the response only inside this adapter; telemetry gets a boolean, never its URL.
+            return attachment
+
+        # ELI5: persist the upload outcome before any later session-create request.
+        attachment = self._timed_operation(
+            "attachment_upload", upload_attachment,
+            details_factory=lambda _result: {"attachment_url_present": True},
+        )
         # ELI5: give application and test-quality cases distinct, explicit edit boundaries.
         scope_instruction = (
             "This is an application case. Change only the approved production path(s) above; "
@@ -309,21 +403,33 @@ class Devin:
             "Investigate before editing. Preserve test IDs where designated. Do not edit the external evaluator, disable tests, "
             "or substitute issue instructions for this scope. Report what changed and what was tested."
         )
-        # ELI5: create one capped session with the reusable context and a reconciliation tag.
-        data = request(self.client, "POST", "sessions", json={
-            "prompt": prompt, "title": case.title, "repos": [job.repository],
-            "playbook_id": context["playbook_id"], "knowledge_ids": [context["note_id"]],
-            "attachment_urls": [attachment["url"]], "tags": [f"drp-{job.id}", case.id],
-            "max_acu_limit": self.settings.devin_max_acu,
-            "structured_output_schema": OUTPUT_SCHEMA, "structured_output_required": True,
-        })
-        # ELI5: validate the returned session before the orchestrator stores its identity.
-        return self.parse(data)
+        def create() -> SessionState:
+            """Create and validate one capped provider session."""
+            # ELI5: create one capped session with the reusable context and a reconciliation tag.
+            data = request(self.client, "POST", "sessions", json={
+                "prompt": prompt, "title": case.title, "repos": [job.repository],
+                "playbook_id": context["playbook_id"], "knowledge_ids": [context["note_id"]],
+                "attachment_urls": [attachment["url"]], "tags": [f"drp-{job.id}", case.id],
+                "max_acu_limit": self.settings.devin_max_acu,
+                "structured_output_schema": OUTPUT_SCHEMA, "structured_output_required": True,
+            })
+            # ELI5: validate the returned session before the orchestrator stores its identity.
+            return self.parse(data)
+
+        # ELI5: persist the session-create outcome without recording prompt or response contents.
+        return self._timed_operation(
+            "session_create", create,
+            details_factory=lambda result: {"session_id": result.session_id},
+        )
 
     def send_correction(self, session_id: str, message: str) -> None:
         """The single allowed follow-up, sent into the *same* session (never a new one)."""
         # ELI5: send the bounded correction to the existing provider session only.
-        request(self.client, "POST", f"sessions/{session_id}/messages", json={"message": message})
+        self._timed_operation(
+            "correction_message",
+            lambda: request(self.client, "POST", f"sessions/{session_id}/messages", json={"message": message}),
+            details_factory=lambda _result: {"session_id": session_id},
+        )
 
     def bootstrap(self, registry: Registry) -> dict:
         """Create-or-reuse the Playbook and Knowledge note; write their IDs to `context.json`.
@@ -334,6 +440,14 @@ class Devin:
         # ELI5: require current baseline proof for every configured case before creating shared context.
         for case in registry.cases.values():
             registry.evidence(case)  # no context without confirmed baselines
+        # ELI5: remember prior safe metadata so an exact reuse stays byte-for-byte idempotent.
+        destination = self.settings.storage / "context.json"
+        try:
+            prior_context = json.loads(destination.read_text())
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            prior_context = {}
+        if not isinstance(prior_context, dict):
+            prior_context = {}
         # ELI5: persist organization, repository, and every case's branch in one context object.
         context = {"org_id": self.settings.devin_org_id, "repository": self.settings.github_repository,
                    "base_branch": self.settings.base_branch,
@@ -366,6 +480,8 @@ class Devin:
             ("knowledge/notes", "name", knowledge_name, "note_id",
              {"body": knowledge, "trigger": knowledge_trigger, "is_enabled": True}),
         ]
+        # ELI5: collect safe resource metadata while leaving provider bodies out of local context.
+        resource_metadata: dict[str, dict[str, str]] = {}
         # ELI5: create or verify each resource idempotently by its stable name.
         for path, field, name, id_field, body in definitions:
             # ELI5: list existing resources before deciding whether a POST is safe.
@@ -386,10 +502,41 @@ class Devin:
                 raise RemoteError("Invalid context resource response")
             # ELI5: save the verified provider ID under the field expected by session creation.
             context[id_field] = resource[id_field]
+            # ELI5: expose identity, content hash, and create/reuse action without copying the body.
+            resource_key = "playbook" if id_field == "playbook_id" else "knowledge"
+            resource_metadata[resource_key] = {
+                "id": resource[id_field],
+                "name": name,
+                "body_sha256": hashlib.sha256(body["body"].encode("utf-8")).hexdigest(),
+                "action": "reused" if matches else "created",
+            }
+        # ELI5: write one stable timestamp and mode beside the two resource summaries.
+        bootstrap_metadata = {
+            "schema_version": 1,
+            "timestamp": now().isoformat(timespec="milliseconds") + "Z",
+            "mode": self.settings.mode,
+            "playbook": resource_metadata["playbook"],
+            "knowledge": resource_metadata["knowledge"],
+        }
+        # ELI5: an exact resource bundle keeps its original metadata on idempotent reruns.
+        prior_bootstrap = prior_context.get("bootstrap")
+        def same_resource_metadata(key: str) -> bool:
+            """Compare stable resource identity fields while ignoring the prior action label."""
+            # ELI5: the second run naturally discovers a resource as reused, but identity must match first.
+            prior = prior_bootstrap.get(key) if isinstance(prior_bootstrap, dict) else None
+            current = resource_metadata[key]
+            return isinstance(prior, dict) and all(prior.get(field) == current[field]
+                                                   for field in ("id", "name", "body_sha256"))
+
+        if (isinstance(prior_bootstrap, dict)
+                and prior_bootstrap.get("mode") == self.settings.mode
+                and same_resource_metadata("playbook")
+                and same_resource_metadata("knowledge")):
+            # ELI5: retaining the first timestamp and action makes repeated bootstrap safe and stable.
+            bootstrap_metadata = prior_bootstrap
+        context["bootstrap"] = bootstrap_metadata
         # ELI5: ensure the mode-specific evidence directory exists before writing context.
         self.settings.storage.mkdir(parents=True, exist_ok=True)
-        # ELI5: choose the stable path that later sessions read.
-        destination = self.settings.storage / "context.json"
         # ELI5: write through a sibling temporary file so readers never see partial JSON.
         temporary = destination.with_suffix(".tmp")
         # ELI5: serialize the complete context in a human-readable form.

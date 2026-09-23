@@ -10,6 +10,8 @@ the download can tell without guessing what happened.
 from __future__ import annotations
 
 import os
+import json
+import re
 from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
@@ -18,7 +20,7 @@ from app.cases import Case, Registry
 from app.config import Settings
 from app.db import Store
 from app.devin import launch_preflight
-from app.metrics import metrics_from_records
+from app.metrics import DEVIN_API_OPERATIONS, metrics_from_records, provider_api_metrics
 from app.models import Event, Job
 
 # ELI5: this version label tells download consumers which report shape they received.
@@ -45,6 +47,90 @@ def _safe_url(value: Any) -> str | None:
     """Allow only secure web links from provider records into clickable dashboard fields."""
     # ELI5: return the original secure URL, or null when the value is missing or unsafe.
     return value if isinstance(value, str) and value.startswith("https://") else None
+
+
+def _not_recorded_resource() -> dict[str, str]:
+    """Return a stable resource projection when bootstrap evidence is absent."""
+    # ELI5: missing context never looks like a provider resource was configured.
+    return {"status": "NOT_RECORDED", "action": "NOT_RECORDED"}
+
+
+def _context_timestamp(value: Any) -> str | None:
+    """Normalize a bootstrap timestamp only when it is a valid ISO value."""
+    # ELI5: arbitrary text from a context file must not become customer-facing metadata.
+    if not isinstance(value, str) or not value or len(value) > 80:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return _iso(parsed)
+
+
+def _bootstrap_resource(value: Any) -> dict[str, str]:
+    """Project one resource's bootstrap metadata without returning identity or hashes."""
+    # ELI5: require all stable fields before calling a provider resource configured.
+    if not isinstance(value, dict):
+        return _not_recorded_resource()
+    resource_id = value.get("id")
+    name = value.get("name")
+    body_sha256 = value.get("body_sha256")
+    action = value.get("action")
+    valid_hash = isinstance(body_sha256, str) and re.fullmatch(r"[0-9a-f]{64}", body_sha256) is not None
+    if (not isinstance(resource_id, str) or not resource_id or len(resource_id) > 200
+            or not isinstance(name, str) or not name or len(name) > 300
+            or not valid_hash or action not in {"created", "reused"}):
+        return _not_recorded_resource()
+    # ELI5: expose the safe action label while keeping resource identity private.
+    return {"status": "CONFIGURED", "action": action}
+
+
+def bootstrap_evidence(settings: Settings) -> dict[str, Any]:
+    """Read mode-specific bootstrap metadata as a safe, truthful evidence summary."""
+    # ELI5: the context file belongs to the selected mode's isolated storage directory.
+    not_recorded = {
+        "status": "NOT_RECORDED",
+        "mode": settings.mode,
+        "schema_version": "NOT_RECORDED",
+        "timestamp": "NOT_RECORDED",
+        "playbook": _not_recorded_resource(),
+        "knowledge": _not_recorded_resource(),
+    }
+    try:
+        context = json.loads((settings.storage / "context.json").read_text())
+    except (OSError, ValueError, TypeError):
+        return not_recorded
+    # ELI5: only the bootstrap object written for this exact mode can support a claim.
+    metadata = context.get("bootstrap") if isinstance(context, dict) else None
+    if not isinstance(metadata, dict) or metadata.get("mode") != settings.mode:
+        return not_recorded
+    timestamp = _context_timestamp(metadata.get("timestamp"))
+    schema_version = metadata.get("schema_version")
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int) or schema_version < 1:
+        return not_recorded
+    playbook = _bootstrap_resource(metadata.get("playbook"))
+    knowledge = _bootstrap_resource(metadata.get("knowledge"))
+    configured = [playbook["status"] == "CONFIGURED", knowledge["status"] == "CONFIGURED"]
+    if timestamp is None:
+        return not_recorded
+    # ELI5: one missing resource is visible as partial evidence rather than a complete setup claim.
+    status = "RECORDED" if all(configured) else "PARTIAL"
+    return {
+        "status": status,
+        "mode": settings.mode,
+        "schema_version": schema_version,
+        "timestamp": timestamp,
+        "playbook": playbook,
+        "knowledge": knowledge,
+    }
+
+
+def provider_api_report(settings: Settings, events: list[Event], job_ids: set[str] | None = None) -> dict[str, Any]:
+    """Build the report-facing provider trace and its mode-bound bootstrap evidence."""
+    # ELI5: event aggregates and setup evidence share the same selected mode label.
+    summary = provider_api_metrics(events, settings.mode, job_ids=job_ids)
+    summary["bootstrap"] = bootstrap_evidence(settings)
+    return summary
 
 
 # ELI5: this helper shapes one timeline event for safe JSON and HTML use.
@@ -141,11 +227,12 @@ def _validation(job: Job | None) -> dict[str, Any]:
 def _safe_event_details(event: Event) -> dict[str, Any]:
     """Keep useful event coordinates while excluding raw provider or subprocess text."""
     # ELI5: these coordinates explain the workflow while excluding arbitrary provider text.
-    allowed = {"outcome", "correction_count", "sha", "normal", "mutant", "session_id", "attempt", "stale_count", "application", "application_status"}
+    allowed = {"outcome", "correction_count", "sha", "normal", "mutant", "session_id", "attempt", "stale_count", "application", "application_status",
+               "operation", "operation_key", "mode", "latency_ms", "attachment_url_present", "match_count"}
     # ELI5: only known labels may pass through a timeline status field.
     statuses = {"PASS", "ASSERTION_FAILED", "NOT_RUN", "INFRA_ERROR", "INVALID_CONTROL", "NOT_VERIFIED", "NOT_APPLICABLE",
                 "VERIFIED", "NORMAL_FAILED", "REGRESSION_SURVIVED", "APPLICATION_FAILED", "SCOPE_REJECTED", "STALE_SHA",
-                "REGRESSION", "CONTRACT_FAILED"}
+                "REGRESSION", "CONTRACT_FAILED", "SUCCEEDED", "FOUND", "NOT_FOUND", "AMBIGUOUS", "FAILED", "RETRYABLE_ERROR"}
     # ELI5: build a fresh safe map instead of mutating the database event.
     safe: dict[str, Any] = {}
     # ELI5: inspect each stored detail and copy only fields the report understands.
@@ -160,6 +247,26 @@ def _safe_event_details(event: Event) -> dict[str, Any]:
             not isinstance(value, str) or value not in statuses
         ):
             # ELI5: an unknown status is less useful than exposing an unsafe string, so omit it.
+            continue
+        # ELI5: operation rows use one stable allow-list and may not carry arbitrary provider names.
+        if key in {"operation", "operation_key"} and (not isinstance(value, str) or value not in DEVIN_API_OPERATIONS):
+            continue
+        # ELI5: mode is safe only when it identifies one of the two application stores.
+        if key == "mode" and value not in {"LIVE", "SIMULATION"}:
+            continue
+        # ELI5: latency and match counts stay numeric and nonnegative for simple UI aggregation.
+        if key in {"latency_ms", "match_count"} and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
+            continue
+        # ELI5: the adapter emits a boolean attachment marker, never its private URL.
+        if key == "attachment_url_present" and not isinstance(value, bool):
+            continue
+        # ELI5: provider session IDs are bounded identifiers, not arbitrary response text.
+        if key == "session_id" and (
+            not isinstance(value, str) or len(value) > 120
+            or not value.replace("-", "").replace("_", "").isalnum()
+        ):
             continue
         # ELI5: keep this one approved coordinate for the customer timeline.
         safe[key] = value
@@ -230,6 +337,8 @@ def _job_record(mode: str, job: Job, events: list[Event], case: Case | None = No
         "event_count": len(events),
         # ELI5: export the same sanitized events that the selected timeline renders.
         "events": [_event_record(event) for event in events],
+        # ELI5: keep provider activity scoped to this job for the detail card.
+        "provider_api": provider_api_metrics(events, mode, job_ids={job.id}),
         # ELI5: group safe navigation links under one predictable object.
         "links": {
             # ELI5: the issue URL identifies the source finding on the configured repository.
@@ -505,6 +614,8 @@ def build_report(settings: Settings, store: Store, registry: Registry) -> dict[s
         events_by_job[event.job_id].append(event)
     # ELI5: normalize every job once, including its registered case kind.
     job_records = [_job_record(settings.mode, job, events_by_job[job.id], registry.cases.get(job.case_id)) for job in jobs]
+    # ELI5: aggregate only events owned by this report's persisted job snapshot.
+    provider_api = provider_api_report(settings, events, job_ids={job.id for job in jobs})
     # ELI5: return one export-shaped snapshot shared by HTML and /report.json.
     return {
         # ELI5: identify the stable consumer schema.
@@ -525,7 +636,9 @@ def build_report(settings: Settings, store: Store, registry: Registry) -> dict[s
             ),
         },
         # ELI5: calculate KPIs from the same job/event snapshot.
-        "metrics": metrics_from_records(jobs, events),
+        "metrics": metrics_from_records(jobs, events, mode=settings.mode),
+        # ELI5: expose safe provider operation evidence and mode-specific bootstrap status.
+        "provider_api": provider_api,
         # ELI5: expose live setup gates without performing live work.
         "readiness": pilot_readiness(settings, registry),
         # ELI5: expose persisted event-to-oracle handoff counters.

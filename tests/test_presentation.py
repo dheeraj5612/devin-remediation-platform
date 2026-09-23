@@ -148,6 +148,46 @@ def test_case_specific_checks_and_synthetic_artifacts(populated):
     assert "data-secondary" in app_html and "Show all" in app_html
 
 
+def test_provider_activity_is_mode_labeled_and_bootstrap_stays_unrecorded(populated):
+    """Show persisted fake operation records while keeping absent bootstrap proof explicit."""
+
+    # ELI5: simulation emits provider-shaped operation rows but does not run live bootstrap.
+    client, report = populated
+    provider = report["provider_api"]
+    assert provider["mode"] == "SIMULATION"
+    assert provider["event_count"] > 0 and provider["success_count"] < provider["event_count"]
+    assert provider["latency_basis"] == "synthetic"
+    assert provider["operations"]["session_poll"]["event_count"] > 0
+    assert provider["operations"]["session_poll"]["latency_ms"]["median"] == 0
+    assert provider["bootstrap"]["status"] == "NOT_RECORDED"
+    assert provider["bootstrap"]["playbook"]["status"] == "NOT_RECORDED"
+    assert provider["bootstrap"]["knowledge"]["status"] == "NOT_RECORDED"
+    assert "playbook_id" not in json.dumps(provider)
+    assert "body_sha256" not in json.dumps(provider)
+    dashboard = client.get("/dashboard").text
+    assert "Devin API activity" in dashboard
+    assert f">{provider['event_count']}</strong><span>operation records" in dashboard
+    assert f">{provider['success_count']}</strong><span>successful" in dashboard
+    assert f">{provider['latency_ms']['median']} ms" in dashboard
+    job = report["jobs"][0]
+    detail = client.get(f"/jobs/{job['id']}").text
+    assert "Devin API activity" in detail
+    assert "Current mode context" in detail
+
+
+def test_provider_activity_absence_is_not_recorded(client):
+    """An empty mode has no inferred provider calls or bootstrap resources."""
+
+    # ELI5: an empty store and absent context file must remain visibly empty in the export and UI.
+    report = client.get("/report.json").json()
+    provider = report["provider_api"]
+    assert provider["status"] == "NOT_RECORDED"
+    assert provider["event_count"] == 0
+    assert provider["bootstrap"]["status"] == "NOT_RECORDED"
+    assert provider["bootstrap"]["timestamp"] == "NOT_RECORDED"
+    assert "NOT_RECORDED" in client.get("/dashboard").text
+
+
 def test_metadata_and_error_recovery(populated):
     """Keep indexing metadata, not-found responses, and method errors within their route contracts."""
 

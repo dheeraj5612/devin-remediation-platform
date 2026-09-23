@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import status, mode_banner, sha %}
+{% from 'macros.html' import status, mode_banner, sha, provider_api_card %}
 {% block content %}
 {% set verdict = selected_job|linked_verdict %}
 {% set sha_verified = verdict == 'VERIFIED' %}
@@ -11,6 +11,7 @@
     <span class="verdict-symbol" aria-hidden="true">{{ '✓' if verdict == 'VERIFIED' else '!' if verdict in ['ESCALATED','FAILED'] else '…' }}</span><div><p class="eyebrow">{{ selected_job.evidence_level|replace('_',' ') }}</p><h2 id="verdict-title">{{ 'Check passed. Review next.' if verdict == 'VERIFIED' else 'Verification stopped.' if verdict in ['ESCALATED','FAILED'] else 'The verification link is incomplete.' if verdict == 'INCOMPLETE' else 'Evidence pending.' }}</h2><p>{% if verdict == 'VERIFIED' %}{{ 'Simulated outcome, not live proof.' if report.truth.simulation else 'Recorded oracle accepted this candidate. Not approval to merge.' }}{% elif verdict in ['ESCALATED','FAILED'] %}{{ selected_job.validation.outcome|replace('_',' ')|capitalize }}. Review the check and candidate. This page does not retry automatically.{% elif verdict == 'INCOMPLETE' %}Stored state is VERIFIED, but the exact-SHA link is missing or mismatched. Do not treat it as proof; inspect the artifacts.{% else %}{{ selected_job.status|replace('_',' ')|capitalize }}. Refresh for the latest saved state.{% endif %}</p></div><div>{{ status(selected_job, report.truth.simulation) }}<p class="micro">{{ selected_job.correction_count }} of {{ selected_job.correction_limit }} corrections used</p></div>
   </section>
   <nav class="detail-nav" aria-label="Run evidence sections"><a href="#proof-heading">Proof ↓</a><a href="#boundary-heading">Scope ↓</a><a href="#events-heading">Events ↓</a></nav>
+  {{ provider_api_card(selected_provider_api, true) }}
   <section class="proof-sheet" aria-labelledby="proof-heading">
     <div class="section-heading"><div><p class="eyebrow">01 / Proof</p><h2 id="proof-heading">One contract. Before and after.</h2></div><span class="mono">{{ 'APPLICATION' if selected_job.case_kind == 'application' else 'TEST + MUTANT' }}</span></div>
     <div class="comparison-table"><table><caption class="sr-only">Baseline and candidate evaluation results</caption><thead><tr><th scope="col">Independent check</th><th scope="col">Before <span>Current case baseline</span></th><th scope="col">After <span>Candidate</span></th></tr></thead><tbody>

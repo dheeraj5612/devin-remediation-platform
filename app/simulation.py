@@ -11,7 +11,9 @@ duplicate webhook to show deduplication.
 import hashlib
 import hmac
 import json
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Iterator
 
 from fastapi.testclient import TestClient
 
@@ -19,7 +21,7 @@ from app.cases import Case
 from app.config import ROOT, Settings
 from app.models import TERMINAL, Job
 from app.db import Store
-from app.devin import SessionState
+from app.devin import RemoteError, SessionState
 from app.github import Candidate
 from app.main import create_app
 from app.metrics import metrics
@@ -55,6 +57,31 @@ class FakeDevin:
         self.create_count = 0
         # ELI5: retain correction messages so the demo can prove its retry count.
         self.messages: list[tuple[str, str]] = []
+        # ELI5: the real adapter and this fake share a short-lived safe event callback.
+        self._operation_recorder = None
+        # ELI5: the restart scenario can model a lost create reply without a second session.
+        self.drop_next_create_reply_for: set[int] = set()
+
+    @contextmanager
+    def operation_trace(self, recorder) -> Iterator[None]:
+        """Route deterministic, body-free operation summaries to the simulation store."""
+        # ELI5: restore any outer callback after this one job operation completes.
+        previous = self._operation_recorder
+        self._operation_recorder = recorder
+        try:
+            # ELI5: provider-shaped fake actions below can emit their matching trace rows.
+            yield
+        finally:
+            # ELI5: avoid carrying one job's recorder into the next simulated operation.
+            self._operation_recorder = previous
+
+    def _record_operation(self, operation: str, outcome: str, **details: Any) -> None:
+        """Emit deterministic zero-latency facts without storing prompts or message text."""
+        # ELI5: direct unit tests can use the fake without installing a recorder.
+        if self._operation_recorder is None:
+            return
+        # ELI5: simulation latency is fixed at zero so repeated demos produce stable traces.
+        self._operation_recorder(operation, outcome, {"latency_ms": 0, **details})
 
     def create_session(self, job: Job, case: Case) -> SessionState:
         """Create one deterministic fake session and remember its owning job."""
@@ -64,20 +91,39 @@ class FakeDevin:
         session_id = f"sim-{job.id}"
         # ELI5: record issue and revision so fake PR heads can change after correction.
         self.sessions[session_id] = {"job_id": job.id, "issue": job.issue_number, "revision": 0}
+        # ELI5: mirror the real launch breadth with a deterministic evidence-upload operation.
+        self._record_operation("attachment_upload", "SUCCEEDED", attachment_url_present=True)
+        # ELI5: issue 104 can model a lost provider reply while retaining its durable session.
+        if job.issue_number in self.drop_next_create_reply_for:
+            self.drop_next_create_reply_for.remove(job.issue_number)
+            self._record_operation("session_create", "RETRYABLE_ERROR", session_id=session_id)
+            raise RemoteError("Simulated lost create response", retryable=True, retry_after=0)
+        # ELI5: record the successful session creation without adding a synthetic poll.
+        self._record_operation("session_create", "SUCCEEDED", session_id=session_id)
         # ELI5: return the same finished-looking state the real adapter would parse.
-        return self.get_session(session_id)
+        return SessionState(session_id=session_id, status="running", status_detail="finished")
 
     def get_session(self, session_id: str) -> SessionState:
         """Return a finished-looking state for a known fake session."""
         # ELI5: expose a valid provider-shaped state while marking the fake as finished.
-        return SessionState(session_id=session_id, status="running", status_detail="finished")
+        state = SessionState(session_id=session_id, status="running", status_detail="finished")
+        # ELI5: each simulated poll is observable with fixed latency and the safe session ID.
+        self._record_operation("session_poll", "SUCCEEDED", session_id=session_id)
+        return state
 
     def find_session(self, job_id: str) -> SessionState | None:
         """Find a prior fake session by job ownership to model restart reconciliation."""
         # ELI5: search saved fake records by the durable job ID.
         session_id = next((sid for sid, record in self.sessions.items() if record["job_id"] == job_id), None)
         # ELI5: return the existing session or no result without creating another one.
-        return self.get_session(session_id) if session_id else None
+        if session_id:
+            state = SessionState(session_id=session_id, status="running", status_detail="finished")
+            # ELI5: recovery records a found tagged session without copying provider records.
+            self._record_operation("list_reconcile", "FOUND", session_id=session_id)
+            return state
+        # ELI5: a missing tagged session is a visible safe reconciliation outcome.
+        self._record_operation("list_reconcile", "NOT_FOUND")
+        return None
 
     def send_correction(self, session_id: str, message: str) -> None:
         """Record one correction and advance that fake session's revision."""
@@ -85,6 +131,8 @@ class FakeDevin:
         self.messages.append((session_id, message))
         # ELI5: incrementing revision changes the fake PR SHA after a correction.
         self.sessions[session_id]["revision"] += 1
+        # ELI5: record only the correction outcome and session identity, never its message text.
+        self._record_operation("correction_message", "SUCCEEDED", session_id=session_id)
 
 
 # ELI5: this fake GitHub adapter derives one deterministic PR head per fake session revision.
@@ -167,6 +215,8 @@ def run_demo(settings: Settings) -> dict:
         raise ValueError("Simulation storage is not empty; use the demo command's --reset option")
     # ELI5: install the deterministic fake provider and validator used by this credential-free run.
     devin, validator = FakeDevin(), FakeValidator()
+    # ELI5: issue 104 loses its first create reply so launch reconciliation is exercised safely.
+    devin.drop_next_create_reply_for.add(104)
     # ELI5: make fake PR discovery share the fake Devin session revisions.
     github = FakeGitHub(devin)
     # ELI5: use the production orchestrator so real state transitions are exercised.
@@ -190,6 +240,11 @@ def run_demo(settings: Settings) -> dict:
             for job in store.jobs():
                 # ELI5: use the current job ID so the orchestrator reloads durable state itself.
                 orchestrator.step(job.id)
+                # ELI5: make the simulated lost-reply retry immediately eligible while keeping live backoff intact.
+                current = store.get(job.id)
+                if (current.issue_number == 104 and current.status == "DEVIN_RUNNING"
+                        and current.launch_requested and not current.devin_session_id):
+                    store.defer(job.id, 0)
                 # ELI5: trigger the one restart after issue 104 has a durable session identity.
                 if job.issue_number == 104 and store.get(job.id).devin_session_id and not restarted:
                     # Simulate a worker crash after the session exists: new Store + Orchestrator, same DB.

@@ -8,10 +8,13 @@ follows it, a crash at any point leaves enough breadcrumbs to resume without
 paying for a second Devin session.
 """
 
+from contextlib import contextmanager
+from typing import Any, Iterator
+
 from app.cases import Registry
 from app.config import Settings
 from app.db import Store
-from app.devin import Devin, RemoteError, SessionState
+from app.devin import AmbiguousSessionError, Devin, RemoteError, SessionState
 from app.github import Candidate, GitHub
 from app.models import Job, TERMINAL, now
 from app.validator import Validator
@@ -28,6 +31,49 @@ class Orchestrator:
         self.devin, self.github, self.validator = devin, github, validator
         # ELI5: load the immutable case list once so webhooks and validation share policy.
         self.registry = Registry(settings)
+
+    @contextmanager
+    def _provider_trace(self, job_id: str) -> Iterator[None]:
+        """Persist safe Devin operation summaries for one job without changing provider behavior."""
+        # ELI5: real Devin and the simulation expose the same short-lived tracing hook.
+        trace = getattr(self.devin, "operation_trace", None)
+        if not callable(trace):
+            # ELI5: old test doubles can still run; they simply have no provider-level trace.
+            yield
+            return
+
+        def record(operation: str, outcome: str, details: dict[str, Any]) -> None:
+            """Allow-list the callback payload before appending it to the job timeline."""
+            # ELI5: only known operation names can become provider telemetry rows.
+            allowed_operations = {"attachment_upload", "session_create", "session_poll",
+                                  "list_reconcile", "correction_message"}
+            if operation not in allowed_operations:
+                return
+            # ELI5: keep the outcome vocabulary small so UI consumers can count it safely.
+            allowed_outcomes = {"SUCCEEDED", "FOUND", "NOT_FOUND", "AMBIGUOUS", "FAILED", "RETRYABLE_ERROR"}
+            safe_outcome = outcome if outcome in allowed_outcomes else "FAILED"
+            # ELI5: the event stores a stable key and mode; Event.timestamp is the canonical timestamp.
+            safe_details: dict[str, Any] = {
+                "operation": operation,
+                "operation_key": operation,
+                "outcome": safe_outcome,
+                "mode": self.settings.mode,
+            }
+            # ELI5: copy only bounded, non-content facts supplied by the adapter.
+            latency = details.get("latency_ms")
+            if isinstance(latency, int) and latency >= 0:
+                safe_details["latency_ms"] = latency
+            session_id = details.get("session_id")
+            if isinstance(session_id, str) and len(session_id) <= 120 and session_id.replace("-", "").replace("_", "").isalnum():
+                safe_details["session_id"] = session_id
+            if isinstance(details.get("attachment_url_present"), bool):
+                safe_details["attachment_url_present"] = details["attachment_url_present"]
+            # ELI5: append one immutable row without changing job state or idempotency flags.
+            self.store.change(job_id, "DEVIN_API_OPERATION", details=safe_details)
+
+        # ELI5: install the recorder only for this job's provider call, then restore the prior one.
+        with trace(record):
+            yield
 
     def resume(self) -> None:
         """Called once at worker start: note that we picked up unfinished jobs (nothing is recreated)."""
@@ -84,6 +130,11 @@ class Orchestrator:
             current = self.store.get(job.id)
             # ELI5: count this failure from durable state rather than an in-memory counter.
             failures = current.api_failures + 1
+            # ELI5: duplicate session identity is a permanent reconciliation decision, never a retry.
+            if isinstance(exc, AmbiguousSessionError):
+                self.store.change(job.id, "RECONCILIATION_REQUIRED", status="ESCALATED", api_failures=failures,
+                                  failure_reason="Multiple sessions match this job tag; manual reconciliation required")
+                return
             # ELI5: an uncertain launch is reconciled by tag and never blindly posted twice.
             if not current.devin_session_id and current.launch_requested and failures <= 3:
                 # We POSTed "create session" and lost the answer. Do NOT POST again; next step reconciles by tag.
@@ -120,7 +171,8 @@ class Orchestrator:
         # ELI5: a saved launch intent means a previous POST may have succeeded without returning its reply.
         if job.launch_requested:
             # ELI5: look up the same session tag before considering any new provider call.
-            session = self.devin.find_session(job.id)
+            with self._provider_trace(job.id):
+                session = self.devin.find_session(job.id)
             # ELI5: no matching session is unsafe to recreate automatically, so ask for inspection.
             if session is None:
                 # ELI5: escalate when reconciliation cannot prove a session exists.
@@ -132,7 +184,8 @@ class Orchestrator:
             # ELI5: write the intent first so a crash cannot turn one job into two sessions.
             self.store.change(job.id, "LAUNCH_REQUESTED", launch_requested=True)
             # ELI5: create the session only after the durable idempotency marker exists.
-            session = self.devin.create_session(job, self.registry.cases[job.case_id])
+            with self._provider_trace(job.id):
+                session = self.devin.create_session(job, self.registry.cases[job.case_id])
         # ELI5: attach whichever original session was found or created to this durable job.
         self.store.change(job.id, "SESSION_ATTACHED", devin_session_id=session.session_id,
                           devin_session_url=session.url, provider_status=session.status,
@@ -155,7 +208,8 @@ class Orchestrator:
     def poll(self, job: Job) -> None:
         """Ask Devin how the session is doing; move to PR_OPENED when a PR in our repo appears."""
         # ELI5: ask the provider for the current state of the already-attached session.
-        state = self.devin.get_session(job.devin_session_id)
+        with self._provider_trace(job.id):
+            state = self.devin.get_session(job.devin_session_id)
         # ELI5: a different session identity could leak another job's work into this result.
         if state.session_id != job.devin_session_id:
             # ELI5: never let one session's status update another job.
@@ -264,6 +318,7 @@ class Orchestrator:
             "Do not modify the evaluator or disable tests. This is the only correction attempt."
         )
         # ELI5: send one correction through the existing session, never create a second session.
-        self.devin.send_correction(job.devin_session_id, message)
+        with self._provider_trace(job.id):
+            self.devin.send_correction(job.devin_session_id, message)
         # ELI5: acknowledge the send only after the provider call returns successfully.
         self.store.change(job.id, "CORRECTION_SENT", correction_acknowledged=True)

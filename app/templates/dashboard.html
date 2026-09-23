@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import status, mode_banner %}
+{% from 'macros.html' import status, mode_banner, provider_api_card %}
 {% block content %}
 {# ELI5: the ledger, metrics and handoff line share one read-only report snapshot. #}
 <div class="wrap workspace workbench" data-refresh-root>
@@ -18,6 +18,7 @@
     {% for step in workflow.steps %}<li class="{{ 'final-stage' if loop.last else '' }}"><span class="stage-count">{{ desk.verified_count if loop.last else step.count }}</span><span>{{ ['Admitted','Sessions','Candidates','Evaluated','Verified'][loop.index0] }}</span></li>{% endfor %}
   </ol><div class="human-gate"><span class="gate-brackets" aria-hidden="true">[ ]</span><span>Human review<br><small>Still required</small></span></div></section>
   </div>
+  {{ provider_api_card(desk.provider_api) }}
   {% if desk.unlinked_count %}<p class="comparison-note">{{ desk.unlinked_count }} stored VERIFIED record(s) have incomplete SHA evidence. They appear under Needs attention, not Verified or the proof line. Metrics and exports keep the stored state.</p>{% endif %}
   <section class="run-section" aria-labelledby="jobs-heading">
     <div class="section-heading"><h2 id="jobs-heading">Job activity</h2><p class="micro">Updated <time datetime="{{ report.generated_at }}">{{ report.generated_at|clock }}</time></p></div>

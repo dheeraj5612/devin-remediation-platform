@@ -161,11 +161,13 @@ local source comparator. It records the pinned baseline as `REGRESSION` and the
 known reference fix 22ec1f598808859c42dccff21665786224127122 as `PASS`. That
 reference is not a new Devin run.
 
-The dated live record says what issue 7 observed. `/cases` checks the current
-checkout, case and harness fingerprints, baseline files, provider context, and
-environment. The current evaluator fingerprint differs from the archived
-baseline, so current live readiness is blocked until baseline evidence is
-regenerated.
+The dated live record says what issue 7 observed. In `LIVE`, `/cases` checks the
+current checkout, case and harness fingerprints, baseline files, provider
+context, and environment. The current evaluator fingerprint differs from the
+archived baseline, so current live readiness is blocked until baseline evidence
+is regenerated. After `make demo`, `/cases#readiness` intentionally reports
+`SIMULATION` and `NOT_EVALUATED`; it does not display that LIVE fingerprint
+mismatch.
 
 ## Read the contracts and validation boundary
 
@@ -225,7 +227,7 @@ unstable head, or unresolved repair. Terminal states are `VERIFIED`,
 | Situation | Durable behavior |
 | --- | --- |
 | First tick | `QUEUED` becomes `DEVIN_RUNNING` and starts the job deadline |
-| Lost launch response | Search sessions by exact `drp-{job_id}` tag. Do not blindly POST again. Zero matches becomes `ESCALATED`; multiple matches raise `RemoteError`, retry as `LAUNCH_UNCERTAIN` up to three times, then become `FAILED`. |
+| Lost launch response | Search sessions by exact `drp-{job_id}` tag. Do not blindly POST again. Zero matches becomes `ESCALATED`; multiple matches record a `DEVIN_API_OPERATION` with `operation=list_reconcile` and `outcome=AMBIGUOUS`, then record `RECONCILIATION_REQUIRED` with status `ESCALATED` for manual review. Do not retry the lookup or create a second session. |
 | Retryable provider error | Network, `429`, and `5xx` errors retry up to three consecutive failures with provider delay or exponential backoff. Other `4xx` errors become `FAILED`. |
 | Lost correction acknowledgement | Record `correction_requested` first, send only to the same session, and escalate if acknowledgement is missing. |
 | Repair failure | `NORMAL_FAILED`, `REGRESSION_SURVIVED`, or `APPLICATION_FAILED` gets one correction. A second failure escalates. |
@@ -298,8 +300,25 @@ The base is `https://api.devin.ai/v3/organizations/{DEVIN_ORG_ID}/` with a
 | Attachment | `POST attachments` multipart file named `case-id.json` with artifact JSON | `url` |
 | Session create | `POST sessions` with `prompt`, `title`, `repos`, `playbook_id`, `knowledge_ids`, `attachment_urls`, `tags`, `max_acu_limit`, `structured_output_schema`, `structured_output_required` | `session_id`, `status`, optional `url`, `status_detail`, `pull_requests`, `tags` |
 | Session poll | `GET sessions/{session_id}` | Same validated session fields and matching `session_id` |
-| Recovery | Cursor-paginated `GET sessions`, exact `drp-{job_id}` tag | Zero escalates, one attaches, multiple are ambiguous |
+| Recovery | Cursor-paginated `GET sessions`, exact `drp-{job_id}` tag | Zero escalates, one attaches, multiple record an `AMBIGUOUS` `DEVIN_API_OPERATION` and require `RECONCILIATION_REQUIRED` manual review with status `ESCALATED`; no second session is created |
 | Correction | `POST sessions/{session_id}/messages` with `{"message": text}` | Any successful `2xx` acknowledgement |
+
+The customer-facing `Devin API activity` card is an evidence projection of
+these calls, not a provider transcript. Bootstrap is shared setup; the other
+rows are per-job actions:
+
+| Phase | Persisted evidence | Scope and truth boundary |
+| --- | --- | --- |
+| Playbook and Knowledge bootstrap | Mode-specific context metadata | Once per repository context; not a per-job operation row |
+| Attachment upload and session create | `DEVIN_API_OPERATION` rows `attachment_upload` and `session_create` | Every launch; one session intent per job |
+| Session poll | `session_poll` rows | Poll the persisted session identity |
+| List/reconcile | `list_reconcile` row | Only after an uncertain launch or restart; exact job tag required |
+| Correction message | `correction_message` row | Only after a genuine validation failure; at most one correction |
+
+Simulation rows are fake-provider records with synthetic zero-duration timing.
+The checked-in historical LIVE archive predates this instrumentation, so its
+API activity and bootstrap evidence remain `NOT_RECORDED` where no record is
+present. That absence is not a claim about what a historical provider call did.
 
 The session structured output schema requires a string `pr_url` and string
 `summary`, with no additional properties:

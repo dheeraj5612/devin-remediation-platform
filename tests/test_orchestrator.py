@@ -9,7 +9,7 @@ from datetime import timedelta  # Create an old job for the deadline test.
 import pytest  # Parameterize representative state-machine outcomes.
 
 from app.db import Store  # Reopen durable state during restart recovery.
-from app.devin import RemoteError, SessionState  # Model provider failures and terminal sessions.
+from app.devin import AmbiguousSessionError, RemoteError, SessionState  # Model provider failures and terminal sessions.
 from app.github import Candidate  # Build changed pull-request heads for stale-SHA tests.
 from app.models import now  # Timestamp synthetic state transitions.
 from app.orchestrator import Orchestrator  # Exercise the production state machine.
@@ -136,6 +136,34 @@ def test_reconciliation_network_errors_are_bounded(rig):
     assert advance(rig, job).status == "FAILED"  # The retry budget eventually closes the job.
     assert rig.store.get(job.id).api_failures == 4  # Four failures are recorded before terminal failure.
     assert rig.devin.create_count == 0  # Lookup retries never relaunch the session.
+
+
+def test_ambiguous_reconciliation_escalates_without_retry_or_relaunch(rig):
+    """Escalate duplicate launch matches for manual reconciliation without retrying the lookup."""
+
+    job = queue(rig)  # Admit a job whose launch intent is already durable.
+    rig.store.change(job.id, "INTENT", status="DEVIN_RUNNING", started_at=now(), launch_requested=True)  # Skip to reconciliation.
+    calls = 0  # Count lookups so ambiguity cannot be retried.
+
+    def ambiguous(job_id):
+        """Report the provider's ambiguous operation and fail closed."""
+
+        nonlocal calls
+        calls += 1  # The first ambiguous identity ends automated recovery.
+        rig.devin._record_operation("list_reconcile", "AMBIGUOUS", match_count=2)  # Mirror the real adapter trace.
+        raise AmbiguousSessionError("Multiple sessions match this job; manual reconciliation required")
+
+    rig.devin.find_session = ambiguous  # Replace only the reconciliation lookup.
+    current = advance(rig, job)  # Process the ambiguous provider identity.
+    assert current.status == "ESCALATED"  # Ambiguous identity requires human review.
+    assert current.failure_reason == "Multiple sessions match this job tag; manual reconciliation required"
+    assert current.api_failures == 1  # Ambiguity is recorded once, without consuming retry attempts.
+    assert calls == 1  # The same ambiguous lookup is never repeated.
+    assert rig.devin.create_count == 0  # Reconciliation never creates a second session.
+    events = rig.store.events(job.id)  # Inspect the durable audit trail for both provider and state outcomes.
+    operations = [event for event in events if event.event_type == "DEVIN_API_OPERATION"]
+    assert len(operations) == 1 and operations[0].details["outcome"] == "AMBIGUOUS"
+    assert events[-1].event_type == "RECONCILIATION_REQUIRED"  # The terminal event directs manual review.
 
 
 def test_ambiguous_correction_ack_is_not_resent(rig):
