@@ -253,8 +253,8 @@ class Validator:
         """A fresh, detached checkout of `sha` that disappears afterwards."""
         # ELI5: isolate each candidate in a temporary folder so it cannot modify the configured checkout.
         with tempfile.TemporaryDirectory(prefix="drp-") as directory:
-            # ELI5: choose a child path that Git can register as a detached worktree.
-            checkout = Path(directory) / "checkout"
+            # ELI5: use one physical spelling so macOS symlinks cannot change pytest node IDs.
+            checkout = (Path(directory) / "checkout").resolve()
             # ELI5: materialize the exact immutable SHA before running candidate code.
             self.git("worktree", "add", "--detach", str(checkout), sha)
             # ELI5: always clean up the detached worktree after yielding it to the validator.

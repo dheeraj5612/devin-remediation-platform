@@ -12,6 +12,7 @@ from pathlib import Path  # Point the validator at temporary files and worktrees
 
 import pytest  # Provide fixtures, parameterization, and expected exceptions.
 
+import app.validator as validator_module  # Patch only the validator's temporary-directory boundary.
 from app.cases import Registry  # Build a real registered case for scope checks.
 from app.validator import Validator, classify, compare_runs, run_process  # Exercise the control-plane oracle.
 
@@ -111,6 +112,37 @@ def test_scope_and_disposable_worktree(repository):
         assert git("worktree", "list").count("detached HEAD") == 1  # Exactly one temporary checkout is active.
     assert not checkout.exists()  # The context manager removes the checkout on exit.
     assert "detached HEAD" not in git("worktree", "list")  # No temporary worktree remains registered.
+
+
+def test_worktree_uses_canonical_temp_path_for_pytest_nodeids(repository, monkeypatch, tmp_path):
+    """Keep pytest node IDs complete when a macOS temp path passes through a symlink."""
+
+    validator, case, _, _ = repository  # Reuse the real detached-worktree fixture.
+    physical_parent = tmp_path / "physical"  # This is the path the child process will resolve.
+    physical_parent.mkdir()  # Create the real temporary parent before making its alias.
+    alias_parent = tmp_path / "alias"  # This models macOS's /var -> /private/var spelling.
+    alias_parent.symlink_to(physical_parent, target_is_directory=True)  # Make the lexical and physical paths differ.
+
+    class AliasTemporaryDirectory:
+        """Return a symlinked temporary directory without changing the fixture's cleanup."""
+
+        def __enter__(self):
+            """Expose the symlink path that triggered pytest's shortened node ID."""
+
+            return str(alias_parent)  # Make the validator resolve the path before using it.
+
+        def __exit__(self, *args):
+            """Leave the pytest worktree cleanup to the validator's Git context manager."""
+
+            return False  # Do not suppress exceptions from the validation context.
+
+    monkeypatch.setattr(validator_module.tempfile, "TemporaryDirectory",
+                        lambda *args, **kwargs: AliasTemporaryDirectory())  # Simulate macOS's symlinked temp root.
+    with validator.worktree(case.baseline_sha) as checkout:  # Materialize the candidate at the canonical path.
+        result = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q",
+                                 "--rootdir", str(checkout), NODE], cwd=checkout,
+                                capture_output=True, text=True, check=True)  # Ask pytest for its collected node ID.
+    assert "tests/test_example.py::test_contract" in result.stdout.splitlines()  # Preserve the approved exact ID.
 
 
 @pytest.mark.parametrize("kind", ["dependency", "new-test", "delete", "executable", "symlink", "broad"])
