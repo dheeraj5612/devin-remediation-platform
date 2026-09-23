@@ -49,7 +49,7 @@ return to the job's **Proof** section.
 > `VERIFIED`; a human still decides whether to merge.
 
 **2:30 to 3:15 | A failure the app refused to hide.** On the timeline, show
-`FAILED` followed by `INFRA_REVALIDATED`.
+`FAILED` followed by `Verified after retry`.
 
 > The first local check could not trust pytest's test ID because macOS gave a
 > temporary folder two path spellings. The app reported `INFRA_ERROR` instead
