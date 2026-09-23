@@ -67,3 +67,28 @@
     The source-backed fix initializes config before load_yaml can raise. The baseline parent
     is the commit immediately before the public fork's fix commit 22ec1f598808859c42dccff21665786224127122.
   acceptance_test: evals/application_cases/import_unparseable_yaml.py
+- id: superset-normalize-dttm-edge-cases
+  title: One-row datetime edge-case test does not require conversion
+  source_repository: dheeraj5612/superset
+  target_branch: remediation-demo
+  baseline_sha: 5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e
+  affected_paths:
+    - superset/utils/core.py
+    - tests/unit_tests/utils/test_date_parsing.py
+  allowed_paths:
+    - tests/unit_tests/utils/test_date_parsing.py
+  test_ids:
+    - tests/unit_tests/utils/test_date_parsing.py::test_edge_cases
+  challenge: normalize-dttm-skip-single-row
+  contract: >-
+    normalize_dttm_col must mutate each edge-case frame in place so its date column is
+    datetime64. A single string value must become Timestamp("2023-01-01"), while empty,
+    all-null, and already-datetime frames retain the corresponding datetime contract.
+  acceptance: >-
+    The designated test passes normally and fails through an assertion when the trusted
+    one-row processing skip is active. Keep the designated test ID and change only the
+    approved test file.
+  inspection: >-
+    The approved finding identifies test_edge_cases as assertion-free at lines 161-174.
+    Its controlled regression skips normalize_dttm_col processing for frames with fewer
+    than two rows, so the original test remains green while the single-value contract is broken.

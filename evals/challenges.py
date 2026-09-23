@@ -1,4 +1,4 @@
-"""External pytest plugin holding the two registered regressions ("challenges").
+"""External pytest plugin holding the registered regressions ("challenges").
 
 ELI5: this file is the referee's rulebook, and it lives *outside* the Superset
 checkout so Devin can never edit it. The validator loads it with
@@ -156,11 +156,50 @@ def schema_control(monkeypatch: pytest.MonkeyPatch, mutant: bool) -> None:
         }
 
 
+def normalize_dttm_control(monkeypatch: pytest.MonkeyPatch, mutant: bool) -> None:
+    """Regression: a one-row datetime column is left unconverted."""
+    # ELI5: import the candidate module so provenance and the control use the same checkout.
+    module = importlib.import_module("superset.utils.core")
+    # ELI5: keep the real helper available for all rows outside the controlled regression.
+    original = module._process_datetime_column
+    # ELI5: arm the historical small-frame skip only for the mutant phase.
+    if mutant:
+        def skip_single_row(df: Any, col: Any) -> None:
+            """Reintroduce the regression for exactly one-row frames."""
+            if len(df) == 1:
+                return
+            original(df, col)
+
+        # ELI5: patch the helper called by normalize_dttm_col, leaving production files untouched.
+        monkeypatch.setattr(module, "_process_datetime_column", skip_single_row)
+
+    # Positive control: a two-row frame must still convert in both phases.
+    import pandas as pd
+
+    multi = pd.DataFrame({"date": ["2023-01-01", "2023-01-02"]})
+    module.normalize_dttm_col(multi, (module.DateColumn(col_label="date"),))
+    assert pd.api.types.is_datetime64_any_dtype(multi["date"])
+    assert multi["date"].tolist() == [pd.Timestamp("2023-01-01"), pd.Timestamp("2023-01-02")]
+
+    # The phase control is the one-row contract under test.
+    single = pd.DataFrame({"date": ["2023-01-01"]})
+    module.normalize_dttm_col(single, (module.DateColumn(col_label="date"),))
+    if mutant:
+        # ELI5: the registered mutant leaves the source string untouched.
+        assert single["date"].dtype == object
+        assert single["date"].iloc[0] == "2023-01-01"
+    else:
+        # ELI5: clean code converts the value in place to a pandas timestamp.
+        assert pd.api.types.is_datetime64_any_dtype(single["date"])
+        assert single["date"].iloc[0] == pd.Timestamp("2023-01-01")
+
+
 # ELI5: map each approved challenge name to its candidate module and positive control.
 # challenge name -> (production module under test, control function)
 CHALLENGES = {
     "histogram-accept-invalid": ("superset.utils.pandas_postprocessing.histogram", histogram_control),
     "schema-accept-missing-engine": ("superset.databases.schemas", schema_control),
+    "normalize-dttm-skip-single-row": ("superset.utils.core", normalize_dttm_control),
 }
 
 

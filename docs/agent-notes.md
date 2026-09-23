@@ -80,3 +80,10 @@ No-change rationale by category:
 Validation for this audit included YAML and JSON parsing, evidence-to-case
 baseline matching, Jinja template rendering through the existing test suite,
 and `git diff --check`.
+
+## Datetime edge-case case
+
+- Added `superset-normalize-dttm-edge-cases` for `tests/unit_tests/utils/test_date_parsing.py::test_edge_cases`, pinned to fork baseline `5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10` on `remediation-demo`. Devin scope allows only the test file.
+- Added the trusted `normalize-dttm-skip-single-row` challenge. Its mutant skips `_process_datetime_column` only for one-row frames, while its positive control verifies a two-row conversion and the clean versus mutant one-row behavior.
+- Python 3.11.14 with the local `.venv311` confirmed baseline `normal=PASS`, `mutant=PASS`, `outcome=CONFIRMED`; both reports recorded candidate-checkout provenance and active controls. The proof is at the ignored `data/live/baselines/superset-normalize-dttm-edge-cases.json`.
+- Focused registry tests, the full Python suite, Ruff, compilation, and whitespace checks pass. The trusted challenge has only been exercised against the pinned baseline and does not validate a future candidate repair.

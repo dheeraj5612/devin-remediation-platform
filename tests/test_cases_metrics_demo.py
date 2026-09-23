@@ -40,6 +40,18 @@ def test_strong():
     assert findings[0]["status"] == "SUSPICIOUS_NOT_CONFIRMED"
 
 
+def test_normalize_dttm_case_keeps_the_single_test_scope(settings):
+    """The datetime case binds the trusted challenge to the approved test file."""
+    # ELI5: load the allow-list that drives both prompts and validator scope.
+    case = Registry(settings).cases["superset-normalize-dttm-edge-cases"]
+    # ELI5: confirm production code is context only and Devin can edit one test file.
+    assert case.affected_paths == ["superset/utils/core.py", "tests/unit_tests/utils/test_date_parsing.py"]
+    assert case.allowed_paths == ["tests/unit_tests/utils/test_date_parsing.py"]
+    # ELI5: keep the original test node and trusted one-row mutant bound together.
+    assert case.test_ids == ["tests/unit_tests/utils/test_date_parsing.py::test_edge_cases"]
+    assert case.challenge == "normalize-dttm-skip-single-row"
+
+
 @pytest.mark.parametrize("field,value", [("outcome", "REJECTED"), ("mode", "SIMULATION"),
     ("sha", "0" * 40), ("case_fingerprint", "stale"), ("harness_fingerprint", "stale"),
     ("normal", "INFRA_ERROR"), ("mutant", "NOT_RUN"), ("case_id", "other-case")])
@@ -115,6 +127,7 @@ def test_live_readiness_rejects_invalid_context(context_state, live):
         "histogram-invalid-column": 101,
         "schema-missing-engine": 102,
         "import-unparseable-yaml": 105,
+        "superset-normalize-dttm-edge-cases": 103,
     }
     context_path = live.storage / "context.json"
     if context_state == "malformed":
@@ -127,6 +140,7 @@ def test_live_readiness_rejects_invalid_context(context_state, live):
             "histogram-invalid-column": live.base_branch,
             "schema-missing-engine": live.base_branch,
             "import-unparseable-yaml": "remediation-import-yaml",
+            "superset-normalize-dttm-edge-cases": live.base_branch,
         }
         context["repository"] = "other/repository"
         context_path.write_text(json.dumps(context))
