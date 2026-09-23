@@ -92,3 +92,31 @@
     The approved finding identifies test_edge_cases as assertion-free at lines 161-174.
     Its controlled regression skips normalize_dttm_col processing for frames with fewer
     than two rows, so the original test remains green while the single-value contract is broken.
+- id: report-anchor-non-string
+  kind: application
+  title: Non-string report anchor crashes validation instead of returning a validation error
+  source_repository: dheeraj5612/superset
+  target_branch: remediation-demo
+  baseline_sha: 5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e
+  affected_paths:
+    - superset/commands/report/base.py
+  allowed_paths:
+    - superset/commands/report/base.py
+  test_ids: []
+  challenge: application-report-anchor-non-string
+  contract: >-
+    extra.dashboard.anchor is untrusted API input. A list, dict, or number there must be
+    reported as exactly one ValidationError on the "extra" field and must never escape as a
+    TypeError. A string tab id, a JSON list of tab ids, and an unknown tab id keep their
+    current behavior.
+  acceptance: >-
+    The trusted control-plane oracle imports the candidate module from the detached checkout,
+    runs valid-anchor and unknown-tab controls, and distinguishes the pinned TypeError crash for
+    list, dict, and int anchors from one extra-field ValidationError each. A fix that only
+    catches TypeError around json.loads still crashes for list and dict and is rejected.
+  inspection: >-
+    At the pinned SHA _validate_report_extra catches only json.JSONDecodeError around
+    json.loads(anchor), so a non-string anchor raises TypeError, and an unhashable one also
+    fails the membership test and set.add. Upstream apache/superset fixed the same path in
+    c38d4e3cb1ae8e7bec2a36fab87e6cd93e1755f3; that fix is not in the fork's baseline.
+  acceptance_test: evals/application_cases/report_anchor_type.py

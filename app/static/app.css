@@ -133,6 +133,15 @@ img { display: block; max-width: 100%; }
 .metric-strip a { font-size: 12px; text-decoration: none; color: var(--red); }
 .metric-strip a:hover { text-decoration: underline; }
 .metric-attention strong { color: var(--red); }
+.leader-strip.metric-strip { grid-template-columns: repeat(6, 1fr); margin-block: 26px 10px; }
+.leader-strip .micro { display: block; margin-top: 5px; line-height: 1.35; }
+.leader-static { font-size: 26px; }
+.throughput { margin-block: 6px 34px; }
+.throughput h2 { font-size: 16px; letter-spacing: -.02em; margin-bottom: 10px; }
+.throughput-row { display: flex; align-items: center; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 12px; }
+.throughput-row:first-child { border-top: 0; }
+.throughput-row time { color: var(--muted); min-width: 130px; font: 10px var(--mono); }
+.throughput-durations { margin-left: auto; display: flex; gap: 18px; color: var(--muted); font: 10px var(--mono); white-space: nowrap; }
 .handoff { background: var(--ink); color: white; display: flex; align-items: stretch; padding: 22px 24px; gap: 26px; margin-bottom: 36px; }
 .handoff-label { display: flex; justify-content: center; flex-direction: column; flex: 0 0 166px; }
 .handoff-label h2 { font-size: 17px; letter-spacing: -.02em; }
@@ -374,6 +383,10 @@ details .eyebrow { margin-top: 18px; }
   .metric-strip strong { font-size: 44px; }
   .metric-strip .eyebrow { font-size: 9px; }
   .metric-strip .micro, .metric-strip a { font-size: 10px; }
+  .leader-strip.metric-strip { grid-template-columns: 1fr 1fr; margin-block: 22px 6px; }
+  .leader-strip.metric-strip > div:nth-child(3) { border-left: 1px solid var(--line); }
+  .throughput-row { flex-wrap: wrap; }
+  .throughput-durations { flex-basis: 100%; margin-left: 0; }
   .handoff { padding: 18px; gap: 20px; margin-bottom: 30px; }
   .handoff-label { align-items: flex-start; flex-direction: column; gap: 7px; }
   .handoff ol { flex-basis: 100%; }

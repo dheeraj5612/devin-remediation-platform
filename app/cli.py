@@ -5,6 +5,7 @@
     bootstrap-context  create/reuse the Devin Playbook + Knowledge note; writes data/live/context.json
     doctor             list everything still missing before the live worker may run
     revalidate         retry one infrastructure-failed PR at its unchanged SHA, without Devin calls
+    issue-status       post or refresh one job's status comment on its triggering GitHub issue
 
 ELI5: these commands let an operator run the safe demo, prove baselines, prepare
 the provider context, or inspect the gates before live work is allowed.
@@ -20,6 +21,7 @@ from app.config import Settings  # ELI5: load environment-backed live settings.
 from app.devin import Devin, launch_preflight  # ELI5: share the local launch gate without calling Devin.
 from app.db import Store  # ELI5: read and update the one saved failed job.
 from app.github import GitHub  # ELI5: read the candidate PR head before and after local checks.
+from app.issue_status import latest_comment_id, render_card  # ELI5: render and reuse the one issue status comment.
 from app.simulation import run_demo, simulation_settings  # ELI5: run the safe local demo.
 from app.validator import Validator  # ELI5: prove a case is weak or validate its candidate.
 
@@ -55,6 +57,21 @@ def revalidate_failed_job(settings: Settings, job_id: str) -> dict:
             "candidate_sha": candidate.sha, "validated_sha": saved.validated_sha}
 
 
+def issue_status_command(settings: Settings, job_id: str) -> dict:
+    """Render one job's status card and post/edit it once on its triggering GitHub issue.
+
+    Used to backfill the comment for a job that finished before this feature existed,
+    or to manually refresh it. Reuses the same saved comment id the worker would reuse.
+    """
+    store = Store(settings)  # ELI5: use the existing job and event ledger; never enqueue new work.
+    job = store.get(job_id)  # ELI5: find the exact job the operator named.
+    github = GitHub(settings)  # ELI5: post through the same adapter the worker uses.
+    comment_id = latest_comment_id(store, job_id)  # ELI5: edit the existing comment when one was already posted.
+    new_id = github.upsert_issue_comment(job.issue_number, render_card(job), comment_id)
+    store.change(job_id, "ISSUE_STATUS_COMMENTED", details={"comment_id": new_id, "status": job.status})
+    return {"job_id": job.id, "issue_number": job.issue_number, "comment_id": new_id, "status": job.status}
+
+
 # ELI5: this entry point chooses one bounded operator command and reports its result.
 def main() -> None:
     """Run one operator command and exit with a status suitable for automation.
@@ -67,7 +84,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     # ELI5: allow only the four commands implemented below.
     parser.add_argument(
-        "command", choices=["demo", "doctor", "bootstrap-context", "baseline", "revalidate"]
+        "command", choices=["demo", "doctor", "bootstrap-context", "baseline", "revalidate", "issue-status"]
     )
     # ELI5: let a demo operator request a fresh simulation folder.
     parser.add_argument("--reset", action="store_true")
@@ -113,6 +130,12 @@ def main() -> None:
             except BlockingIOError:
                 raise SystemExit("Stop the live worker before revalidating") from None
             print(json.dumps(revalidate_failed_job(settings, args.job_id), indent=2))
+        return
+    # ELI5: backfill or refresh one job's status comment without advancing the state machine.
+    if args.command == "issue-status":
+        if not args.job_id:
+            raise SystemExit("issue-status requires --job-id")
+        print(json.dumps(issue_status_command(settings, args.job_id), indent=2))
         return
     # ELI5: baseline proves every registered case is weak before remediation is attempted.
     if args.command == "baseline":

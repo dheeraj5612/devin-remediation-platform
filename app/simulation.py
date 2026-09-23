@@ -11,6 +11,7 @@ duplicate webhook to show deduplication.
 import hashlib
 import hmac
 import json
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -35,8 +36,10 @@ SCENARIOS = {101: "First-pass verification", 102: "Correction recovery", 103: "E
 EXPECTED = {101: "VERIFIED", 102: "VERIFIED", 103: "ESCALATED", 104: "VERIFIED", 105: "VERIFIED", 106: "ESCALATED"}
 
 
-def simulation_settings(data_dir: Path = Path("data")) -> Settings:
+def simulation_settings(data_dir: Path | None = None) -> Settings:
     """Create credential-free settings that isolate the demo from live storage and APIs."""
+    # ELI5: honor DATA_DIR so the demo writes to the container's /data volume, not the read-only image.
+    data_dir = data_dir or Path(os.environ.get("DATA_DIR", "data"))
     # `_env_file=None`: never pick up real credentials from `.env` in a demo.
     # ELI5: return isolated fake-provider settings with live spending explicitly disabled.
     return Settings(_env_file=None, mode="SIMULATION", data_dir=data_dir, github_repository="demo/superset",

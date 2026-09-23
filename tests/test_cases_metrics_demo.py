@@ -128,6 +128,7 @@ def test_live_readiness_rejects_invalid_context(context_state, live):
         "schema-missing-engine": 102,
         "import-unparseable-yaml": 105,
         "superset-normalize-dttm-edge-cases": 103,
+        "report-anchor-non-string": 106,
     }
     context_path = live.storage / "context.json"
     if context_state == "malformed":
@@ -141,6 +142,7 @@ def test_live_readiness_rejects_invalid_context(context_state, live):
             "schema-missing-engine": live.base_branch,
             "import-unparseable-yaml": "remediation-import-yaml",
             "superset-normalize-dttm-edge-cases": live.base_branch,
+            "report-anchor-non-string": live.base_branch,
         }
         context["repository"] = "other/repository"
         context_path.write_text(json.dumps(context))

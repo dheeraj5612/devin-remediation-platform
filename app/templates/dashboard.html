@@ -5,6 +5,25 @@
 <div class="wrap workspace workbench" data-refresh-root>
   <div class="page-top"><div><p class="eyebrow">Remediation <span class="muted">/ All cases</span></p><h1>The evidence desk.</h1></div><div class="actions"><button id="refresh" class="button js-only" data-refresh type="button"><span aria-hidden="true">↻</span> Refresh</button><a class="button primary" href="/report.json" download>Export all evidence <span aria-hidden="true">↓</span></a></div></div>
   {{ mode_banner(report) }}
+  {# ELI5: the leader strip answers "is this working" first, before the full ledger below. #}
+  <section class="leader-strip metric-strip" aria-label="Is it working: leadership summary">
+    <div><span class="eyebrow">Verified fixes</span><strong>{{ metrics.leader.verified_count }}<span>/{{ metrics.leader.terminal_count }}</span></strong><span class="micro">Verification rate: {{ metrics.leader.verification_rate_label }} terminal runs</span></div>
+    <div><span class="eyebrow">Label → verified</span><strong>{{ metrics.leader.median_label_to_verified }}</strong><span class="micro">Median time to independent verification</span></div>
+    <div><span class="eyebrow">First-pass</span><strong>{{ metrics.first_pass }}<span>/{{ metrics.first_pass_denominator }}</span></strong><span class="micro">Verified with no correction sent</span></div>
+    <div><span class="eyebrow">ACUs / verified fix</span><strong>{% if metrics.leader.acus_per_verified_fix.status == 'RECORDED' %}{{ metrics.leader.acus_per_verified_fix.value }}{% else %}Not reported{% endif %}</strong><span class="micro">Provider-reported consumption</span></div>
+    <div><span class="eyebrow">Human touches / fix</span><strong class="leader-static">1 + 1</strong><span class="micro">1 label + 1 PR review, always</span></div>
+    <div class="metric-attention"><span class="eyebrow">Needs attention</span><strong>{{ metrics.leader.attention_count }}</strong><a href="/dashboard?view=attention">Inspect <span aria-hidden="true">↗</span></a></div>
+  </section>
+  {% if report.throughput %}
+  <section class="throughput" aria-labelledby="throughput-heading">
+    <h2 id="throughput-heading">Run throughput</h2>
+    <div class="throughput-rows">
+    {% for row in report.throughput %}
+    <div class="throughput-row"><span class="run-number mono">#{{ row.issue_number }}</span>{{ status(row, report.truth.simulation) }}<time datetime="{{ row.created_at }}">{{ row.created_at|clock }}</time><span class="throughput-durations"><span>Label → PR: {{ row.label_to_pr }}</span><span>Label → verified: {{ row.label_to_verified }}</span></span></div>
+    {% endfor %}
+    </div>
+  </section>
+  {% endif %}
   <div class="portfolio-overview"><div class="mobile-accounting"><p class="eyebrow">Workspace totals</p><h2>Totals</h2></div>
   {# ELI5: global denominators stay unfiltered even when the ledger is narrowed. #}
   <section class="metric-strip" aria-label="All-workspace metrics, unaffected by filters">

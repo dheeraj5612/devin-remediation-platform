@@ -68,3 +68,52 @@ def test_application_case_branch_is_checked_independently_of_global_branch(setti
     assert github.candidate(7, "remediation-import-yaml").sha == "a" * 40
     with pytest.raises(RemoteError):
         github.candidate(7, "another-case-branch")
+
+
+def test_upsert_issue_comment_creates_then_patches_the_same_comment(settings):
+    """No saved comment id posts once; a saved id edits that same comment in place."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, str(request.url)))
+        return httpx.Response(200, json={"id": 42})
+
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(handler)))
+    created = github.upsert_issue_comment(7, "first body", None)
+    assert created == 42
+    assert seen[0] == ("POST", f"https://api.github.com/repos/{settings.github_repository}/issues/7/comments")
+    edited = github.upsert_issue_comment(7, "second body", 42)
+    assert edited == 42
+    assert seen[1] == ("PATCH", f"https://api.github.com/repos/{settings.github_repository}/issues/comments/42")
+
+
+def test_upsert_issue_comment_reposts_when_saved_comment_was_deleted(settings):
+    """A deleted status comment (PATCH 404) is replaced by a new one instead of failing forever."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.method)
+        return httpx.Response(404) if request.method == "PATCH" else httpx.Response(201, json={"id": 99})
+
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(handler)))
+    assert github.upsert_issue_comment(7, "body", 42) == 99
+    assert seen == ["PATCH", "POST"]
+
+
+def test_upsert_issue_comment_rejects_malformed_response(settings):
+    """A comment response without a valid integer id fails closed instead of returning garbage."""
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"id": "not-an-int"}))))
+    with pytest.raises(RemoteError):
+        github.upsert_issue_comment(7, "body", None)
+
+
+@pytest.mark.parametrize("issue_number,comment_id", [(0, None), (-1, None), (7, 0), (7, -5)])
+def test_upsert_issue_comment_rejects_non_positive_ids(settings, issue_number, comment_id):
+    """Reject a non-positive issue or comment id before it reaches the request path."""
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"id": 1}))))
+    with pytest.raises(ValueError):
+        github.upsert_issue_comment(issue_number, "body", comment_id)

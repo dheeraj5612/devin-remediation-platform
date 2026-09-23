@@ -80,6 +80,36 @@ class GitHub:
             # ELI5: hide provider response details and fail closed on a shape mismatch.
             raise RemoteError("Invalid PR response") from exc
 
+    def upsert_issue_comment(self, issue_number: int, body: str, comment_id: int | None) -> int:
+        """Create the one status comment on `issue_number`, or edit `comment_id` in place."""
+        # ELI5: validate the issue number before placing it in the API path.
+        if isinstance(issue_number, bool) or not isinstance(issue_number, int) or issue_number < 1:
+            raise ValueError("Issue number must be a positive integer")
+        # ELI5: an existing comment id is edited in place instead of posting a duplicate.
+        if comment_id is not None:
+            if isinstance(comment_id, bool) or not isinstance(comment_id, int) or comment_id < 1:
+                raise ValueError("Comment id must be a positive integer")
+            try:
+                data = request(self.client, "PATCH", f"issues/comments/{comment_id}", json={"body": body})
+            except RemoteError as exc:
+                # ELI5: a human deleted the card; post a fresh one instead of failing every later tick.
+                if str(exc) != "Provider HTTP 404":
+                    raise
+                data = request(self.client, "POST", f"issues/{issue_number}/comments", json={"body": body})
+        else:
+            # ELI5: no saved comment id yet means this is the first status comment for the job.
+            data = request(self.client, "POST", f"issues/{issue_number}/comments", json={"body": body})
+        try:
+            # ELI5: reject a malformed response instead of trusting an unexpected comment id.
+            new_id = data["id"]
+            if isinstance(new_id, bool) or not isinstance(new_id, int) or new_id < 1:
+                raise ValueError("Invalid comment id")
+            # ELI5: return the durable comment id so the caller can PATCH it next time.
+            return new_id
+        except (KeyError, TypeError, ValueError) as exc:
+            # ELI5: hide provider response details and fail closed on a shape mismatch.
+            raise RemoteError("Invalid comment response") from exc
+
     def discover(self, state: SessionState, target_branch: str | None = None) -> Candidate | None:
         """Pick one reported PR in our repo and enforce the optional case-specific base branch."""
         # ELI5: build a strict URL pattern for this configured repository only.

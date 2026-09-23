@@ -122,6 +122,76 @@ def provider_api_metrics(events: list[Event], mode: str | None = None,
 provider_api_summary = provider_api_metrics
 
 
+# ELI5: turn a raw seconds value into a short label a VP can read without a calculator.
+def human_duration(seconds: float | int | None) -> str:
+    """Format a seconds value as a compact human-readable duration, or an explicit absence label."""
+    # ELI5: an unmeasured duration must say so instead of showing a misleading zero.
+    if seconds is None:
+        return "not recorded"
+    seconds = float(seconds)
+    if seconds < 60:
+        return f"{round(seconds)} sec"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{round(minutes)} min"
+    hours = minutes / 60
+    if hours < 24:
+        return f"{round(hours, 1)} hr"
+    days = hours / 24
+    return f"{round(days, 1)} day"
+
+
+# ELI5: pull only a genuine, non-boolean numeric ACU figure out of one event's details.
+def _acu_consumed(details: Any) -> float | None:
+    """Return a provider-reported ACU consumption figure only if one was actually recorded."""
+    if not isinstance(details, dict):
+        return None
+    value = details.get("acu_consumed")
+    # ELI5: bool is a subclass of int in Python, so it must be excluded explicitly.
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def leader_strip(jobs: list[Job], events: list[Event], metrics: dict) -> dict[str, Any]:
+    """Summarize the small set of numbers a leader checks first: is this working, and how fast.
+
+    ELI5: verified count and rate, how long a fix took, first-pass rate, whether the
+    provider ever reported ACU spend, and how many runs need a human right now. Every
+    number keeps its denominator, and the ACU tile says "not reported" instead of guessing,
+    because no Devin session-poll response we persist currently carries a consumption figure.
+    """
+    terminal_count = sum(job.status in TERMINAL for job in jobs)
+    verified_count = metrics["verified"]
+    # ELI5: jobs sitting in FAILED or ESCALATED are exactly the ones a human should open next.
+    attention_ids = [job.id for job in jobs if job.status in {"FAILED", "ESCALATED"}]
+    # ELI5: only count ACU figures the provider actually reported on this job's own events.
+    verified_ids = {job.id for job in jobs if job.status == "VERIFIED"}
+    # ELI5: session polls report a running total, so keep each job's largest figure, never a sum of polls.
+    per_job: dict[str, float] = {}
+    for event in events:
+        acu = _acu_consumed(event.details) if event.job_id in verified_ids else None
+        if acu is not None:
+            per_job[event.job_id] = max(acu, per_job.get(event.job_id, 0.0))
+    acu_values = list(per_job.values())
+    return {
+        "verified_count": verified_count,
+        "terminal_count": terminal_count,
+        # ELI5: an explicit "N of M" avoids a rate looking precise when the sample is tiny.
+        "verification_rate_label": f"{verified_count} of {terminal_count}",
+        "median_label_to_verified": human_duration(metrics["median_event_to_verified_seconds"]),
+        "first_pass": metrics["first_pass"],
+        "first_pass_denominator": metrics["first_pass_denominator"],
+        "acus_per_verified_fix": {
+            "status": "RECORDED" if acu_values and verified_count else "NOT_RECORDED",
+            "value": round(sum(acu_values) / verified_count, 2) if acu_values and verified_count else None,
+            "label": "provider-reported",
+        },
+        "attention_count": len(attention_ids),
+        "attention_job_ids": attention_ids,
+    }
+
+
 def metrics_from_records(jobs: list[Job], events: list[Event], mode: str | None = None) -> dict:
     """Calculate metrics from one already-read job/event snapshot for consistent exports."""
     # ELI5: the HTML and JSON report reuse these same rows, so their totals cannot drift mid-render.
@@ -178,7 +248,7 @@ def metrics_from_records(jobs: list[Job], events: list[Event], mode: str | None 
     # ELI5: use the job mode when callers did not provide one, while tolerating small test doubles.
     report_mode = mode or next((getattr(job, "mode", None) for job in jobs if getattr(job, "mode", None)), None)
     # ELI5: return counters with explicit denominators and persisted status distributions.
-    return {
+    result = {
         # ELI5: count every admitted job.
         "jobs_total": len(jobs),
         # ELI5: count jobs with a recorded worker start.
@@ -212,3 +282,6 @@ def metrics_from_records(jobs: list[Job], events: list[Event], mode: str | None 
         # ELI5: expose redacted provider activity beside the existing job metrics.
         "provider_api": provider_api_metrics(events, report_mode, job_ids=job_ids),
     }
+    # ELI5: the leader strip reuses the counters above rather than recomputing them.
+    result["leader"] = leader_strip(jobs, events, result)
+    return result

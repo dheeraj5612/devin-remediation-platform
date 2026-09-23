@@ -20,7 +20,7 @@ from app.cases import Case, Registry
 from app.config import Settings
 from app.db import Store
 from app.devin import launch_preflight
-from app.metrics import DEVIN_API_OPERATIONS, metrics_from_records, provider_api_metrics
+from app.metrics import DEVIN_API_OPERATIONS, human_duration, metrics_from_records, provider_api_metrics
 from app.models import Event, Job
 
 # ELI5: this version label tells download consumers which report shape they received.
@@ -599,6 +599,38 @@ def _workflow_steps(jobs: list[Job]) -> list[dict[str, Any]]:
     ]
 
 
+# ELI5: this helper builds the compact per-job throughput view for the leader strip.
+def _throughput_rows(jobs: list[Job]) -> list[dict[str, Any]]:
+    """Order jobs by admission time and show each one's label-to-PR and label-to-verified wait.
+
+    ELI5: one row per run, oldest first, so a reviewer can see the pace of work without a
+    charting library. Missing timestamps show "not recorded" instead of a blank or a zero.
+    """
+    ordered = sorted(jobs, key=lambda job: job.created_at)
+    rows = []
+    for job in ordered:
+        pr_seconds = (
+            (job.pr_created_at - job.created_at).total_seconds()
+            if job.pr_created_at is not None and job.created_at is not None else None
+        )
+        verified_seconds = (
+            (job.completed_at - job.created_at).total_seconds()
+            if job.status == "VERIFIED" and job.completed_at is not None and job.created_at is not None else None
+        )
+        rows.append({
+            "id": job.id,
+            "issue_number": job.issue_number,
+            "status": job.status,
+            # ELI5: carry the same two fields the status chip needs to avoid a false "unlinked" label.
+            "candidate_sha": job.candidate_sha,
+            "validated_sha": job.validated_sha,
+            "created_at": _iso(job.created_at),
+            "label_to_pr": human_duration(pr_seconds),
+            "label_to_verified": human_duration(verified_seconds),
+        })
+    return rows
+
+
 # ELI5: this helper builds the one report snapshot shared by HTML and JSON.
 def build_report(settings: Settings, store: Store, registry: Registry) -> dict[str, Any]:
     """Build the complete JSON report used by the dashboard and download endpoint."""
@@ -643,6 +675,8 @@ def build_report(settings: Settings, store: Store, registry: Registry) -> dict[s
         "readiness": pilot_readiness(settings, registry),
         # ELI5: expose persisted event-to-oracle handoff counters.
         "workflow": {"mode": settings.mode, "steps": _workflow_steps(jobs)},
+        # ELI5: expose the ordered per-job throughput view for the leader strip.
+        "throughput": _throughput_rows(jobs),
         # ELI5: include every allow-listed case contract and its latest proof.
         "cases": [_case_record(settings, registry, case, jobs) for case in registry.cases.values()],
         # ELI5: include the normalized job rows and safe timelines.

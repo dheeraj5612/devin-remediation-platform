@@ -16,6 +16,7 @@ from app.config import Settings
 from app.db import Store
 from app.devin import AmbiguousSessionError, Devin, RemoteError, SessionState
 from app.github import Candidate, GitHub
+from app.issue_status import latest_comment_id, render_card
 from app.models import Job, TERMINAL, now
 from app.validator import Validator
 
@@ -92,74 +93,118 @@ class Orchestrator:
         if job.status in TERMINAL:
             # ELI5: a finished job needs no transition or provider call.
             return
-        # ELI5: a stuck job eventually stops automatically and waits for a human decision.
-        if job.started_at and (now() - job.started_at).total_seconds() > self.settings.job_timeout_seconds:
-            # ELI5: persist the deadline result before returning so another worker cannot revive it.
-            self.store.change(job.id, "DEADLINE_EXCEEDED", status="ESCALATED",
-                              failure_reason="Job deadline exceeded; inspect or terminate the existing Devin session")
-            # ELI5: an escalated deadline cannot be advanced by this tick.
-            return
-        # ELI5: provider errors are handled separately because retries must be bounded and idempotent.
+        # ELI5: capture the fields visible on the GitHub issue before this tick's work.
+        before = self._issue_fields(job)
         try:
-            # ELI5: queue admission becomes a running job and starts the wall-clock deadline.
-            if job.status == "QUEUED":
-                # ELI5: record the queued-to-running transition before any launch decision.
-                self.store.change(job.id, "DEVIN_RUNNING", status="DEVIN_RUNNING", started_at=now())
-            # ELI5: a running job without a session still needs its one launch attempt.
-            elif job.status == "DEVIN_RUNNING" and not job.devin_session_id:
-                # ELI5: delegate the first provider creation through the idempotent launch gate.
-                self.launch(job)
-            # ELI5: a discovered pull request moves into the independent validation phase.
-            elif job.status == "PR_OPENED":
-                # ELI5: mark validation intent before evaluating the pinned candidate.
-                self.store.change(job.id, "VALIDATING", status="VALIDATING")
-            # ELI5: validation runs only after the job has explicitly entered that phase.
-            elif job.status == "VALIDATING":
-                # ELI5: run the independent validator only after entering VALIDATING.
-                self.evaluate(job)
-            # ELI5: a failed first verdict gets the single allowed correction message.
-            elif job.status == "CORRECTING" and not job.correction_acknowledged:
-                # ELI5: send the one correction only while it remains unacknowledged.
-                self.correct(job)
-            else:
-                # ELI5: all remaining active states poll the same existing Devin session.
-                self.poll(job)  # DEVIN_RUNNING with a session, or CORRECTING waiting for a new commit
-        except RemoteError as exc:
-            # Provider trouble. Three flavours, all bounded to 3 attempts:
-            # ELI5: reload because another process may have recorded a provider attempt meanwhile.
-            current = self.store.get(job.id)
-            # ELI5: count this failure from durable state rather than an in-memory counter.
-            failures = current.api_failures + 1
-            # ELI5: duplicate session identity is a permanent reconciliation decision, never a retry.
-            if isinstance(exc, AmbiguousSessionError):
-                self.store.change(job.id, "RECONCILIATION_REQUIRED", status="ESCALATED", api_failures=failures,
-                                  failure_reason="Multiple sessions match this job tag; manual reconciliation required")
+            # ELI5: a stuck job eventually stops automatically and waits for a human decision.
+            if job.started_at and (now() - job.started_at).total_seconds() > self.settings.job_timeout_seconds:
+                # ELI5: persist the deadline result before returning so another worker cannot revive it.
+                self.store.change(job.id, "DEADLINE_EXCEEDED", status="ESCALATED",
+                                  failure_reason="Job deadline exceeded; inspect or terminate the existing Devin session")
+                # ELI5: an escalated deadline cannot be advanced by this tick.
                 return
-            # ELI5: an uncertain launch is reconciled by tag and never blindly posted twice.
-            if not current.devin_session_id and current.launch_requested and failures <= 3:
-                # We POSTed "create session" and lost the answer. Do NOT POST again; next step reconciles by tag.
-                self.store.change(job.id, "LAUNCH_UNCERTAIN", api_failures=failures,
-                                  failure_reason="Session creation uncertain; reconcile by job tag, never recreate")
-            # ELI5: retry only provider failures that the adapter marked safe to repeat.
-            elif exc.retryable and failures <= 3:
-                # 429/5xx/network: back off exponentially (or as long as Retry-After says) and try again.
-                # ELI5: record the retry before delaying so recovery knows why the job is paused.
-                self.store.change(job.id, "PROVIDER_RETRY", api_failures=failures,
-                                  details={"category": str(exc), "attempt": failures})
-                # ELI5: wait longer after each failure, while respecting the provider's requested delay.
-                self.store.defer(job.id, max(exc.retry_after, 2 ** failures))
-                # ELI5: leave the job deferred so the next scheduled tick can retry.
+            # ELI5: provider errors are handled separately because retries must be bounded and idempotent.
+            try:
+                # ELI5: queue admission becomes a running job and starts the wall-clock deadline.
+                if job.status == "QUEUED":
+                    # ELI5: record the queued-to-running transition before any launch decision.
+                    self.store.change(job.id, "DEVIN_RUNNING", status="DEVIN_RUNNING", started_at=now())
+                # ELI5: a running job without a session still needs its one launch attempt.
+                elif job.status == "DEVIN_RUNNING" and not job.devin_session_id:
+                    # ELI5: delegate the first provider creation through the idempotent launch gate.
+                    self.launch(job)
+                # ELI5: a discovered pull request moves into the independent validation phase.
+                elif job.status == "PR_OPENED":
+                    # ELI5: mark validation intent before evaluating the pinned candidate.
+                    self.store.change(job.id, "VALIDATING", status="VALIDATING")
+                # ELI5: validation runs only after the job has explicitly entered that phase.
+                elif job.status == "VALIDATING":
+                    # ELI5: run the independent validator only after entering VALIDATING.
+                    self.evaluate(job)
+                # ELI5: a failed first verdict gets the single allowed correction message.
+                elif job.status == "CORRECTING" and not job.correction_acknowledged:
+                    # ELI5: send the one correction only while it remains unacknowledged.
+                    self.correct(job)
+                else:
+                    # ELI5: all remaining active states poll the same existing Devin session.
+                    self.poll(job)  # DEVIN_RUNNING with a session, or CORRECTING waiting for a new commit
+            except RemoteError as exc:
+                # Provider trouble. Three flavours, all bounded to 3 attempts:
+                # ELI5: reload because another process may have recorded a provider attempt meanwhile.
+                current = self.store.get(job.id)
+                # ELI5: count this failure from durable state rather than an in-memory counter.
+                failures = current.api_failures + 1
+                # ELI5: duplicate session identity is a permanent reconciliation decision, never a retry.
+                if isinstance(exc, AmbiguousSessionError):
+                    self.store.change(job.id, "RECONCILIATION_REQUIRED", status="ESCALATED", api_failures=failures,
+                                      failure_reason="Multiple sessions match this job tag; manual reconciliation required")
+                    return
+                # ELI5: an uncertain launch is reconciled by tag and never blindly posted twice.
+                if not current.devin_session_id and current.launch_requested and failures <= 3:
+                    # We POSTed "create session" and lost the answer. Do NOT POST again; next step reconciles by tag.
+                    self.store.change(job.id, "LAUNCH_UNCERTAIN", api_failures=failures,
+                                      failure_reason="Session creation uncertain; reconcile by job tag, never recreate")
+                # ELI5: retry only provider failures that the adapter marked safe to repeat.
+                elif exc.retryable and failures <= 3:
+                    # 429/5xx/network: back off exponentially (or as long as Retry-After says) and try again.
+                    # ELI5: record the retry before delaying so recovery knows why the job is paused.
+                    self.store.change(job.id, "PROVIDER_RETRY", api_failures=failures,
+                                      details={"category": str(exc), "attempt": failures})
+                    # ELI5: wait longer after each failure, while respecting the provider's requested delay.
+                    self.store.defer(job.id, max(exc.retry_after, 2 ** failures))
+                    # ELI5: leave the job deferred so the next scheduled tick can retry.
+                    return
+                else:
+                    # ELI5: after the retry budget ends, stop automated calls and mark the job failed.
+                    self.store.change(job.id, "PROVIDER_ERROR", status="FAILED", api_failures=failures,
+                                      failure_reason=str(exc))
+            except (ValueError, OSError, KeyError):
+                # ELI5: configuration defects are not transient provider failures, so never spend retries on them.
+                self.store.change(job.id, "CONFIGURATION_ERROR", status="FAILED",
+                                  failure_reason="Invalid configuration, baseline evidence, or context; run make doctor")
+            # ELI5: schedule the next state-machine tick after every non-terminal action.
+            self.store.defer(job.id, self.settings.poll_seconds)
+        finally:
+            # ELI5: mirror any visible change onto the GitHub issue; this can never affect the outcome above.
+            self._sync_issue_status(job.id, before)
+
+    @staticmethod
+    def _issue_fields(job: Job) -> tuple:
+        """Return the small set of job fields that, if changed, are worth a new issue comment."""
+        # ELI5: keep this list in sync with what `render_card` actually shows.
+        return (job.status, job.devin_session_id, job.candidate_pr_number, job.candidate_sha,
+                job.validation_status, job.correction_count, job.correction_acknowledged)
+
+    def _sync_issue_status(self, job_id: str, before: tuple) -> None:
+        """Best-effort: create or edit the one status comment on the triggering GitHub issue.
+
+        Never raises and never changes job status, api_failures, or any state-machine field;
+        a failure here is recorded as a timeline event and otherwise ignored.
+        """
+        # ELI5: the demo never talks to GitHub, so simulated jobs get no issue comment.
+        if self.settings.mode == "SIMULATION":
+            return
+        # ELI5: older or test provider doubles may not implement comment upsert at all.
+        upsert = getattr(self.github, "upsert_issue_comment", None)
+        if not callable(upsert):
+            return
+        try:
+            # ELI5: reload the committed job so the comment reflects exactly what was persisted.
+            job = self.store.get(job_id)
+            # ELI5: only comment when something a reader would notice actually changed.
+            if self._issue_fields(job) == before:
                 return
-            else:
-                # ELI5: after the retry budget ends, stop automated calls and mark the job failed.
-                self.store.change(job.id, "PROVIDER_ERROR", status="FAILED", api_failures=failures,
-                                  failure_reason=str(exc))
-        except (ValueError, OSError, KeyError):
-            # ELI5: configuration defects are not transient provider failures, so never spend retries on them.
-            self.store.change(job.id, "CONFIGURATION_ERROR", status="FAILED",
-                              failure_reason="Invalid configuration, baseline evidence, or context; run make doctor")
-        # ELI5: schedule the next state-machine tick after every non-terminal action.
-        self.store.defer(job.id, self.settings.poll_seconds)
+            comment_id = latest_comment_id(self.store, job_id)
+            new_id = upsert(job.issue_number, render_card(job), comment_id)
+            # ELI5: remember the comment id as an event, since the job row itself is not being extended.
+            self.store.change(job_id, "ISSUE_STATUS_COMMENTED", details={"comment_id": new_id, "status": job.status})
+        except Exception as exc:  # Best-effort GitHub side effect must never break a step.
+            # ELI5: keep only a short, safe category; never store exception text that could hold a secret.
+            reason = str(exc) if isinstance(exc, (RemoteError, ValueError, KeyError)) else type(exc).__name__
+            try:
+                self.store.change(job_id, "ISSUE_COMMENT_FAILED", details={"reason": reason[:200]})
+            except Exception:  # Recording the failure itself must also never raise.
+                pass
 
     def launch(self, job: Job) -> None:
         """Create the Devin session exactly once.

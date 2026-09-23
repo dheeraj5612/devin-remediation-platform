@@ -52,7 +52,11 @@ The public overview at `/` links to a separately dated archive at `/evidence`; a
 
 The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists in the underlying report. The UI additionally warns when the candidate and validated SHA do not match; it does not endorse an unlinked verified state. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
 
-For a four-minute walkthrough of the live issue #9 to PR #10 run, use [`docs/demo-script.md`](docs/demo-script.md). It shows the signed trigger, Devin API activity, independent exact-SHA verdict, and safe recovery from a local validator error. For exact routes, payloads, state transitions, and adapter calls, see [`docs/app-walkthrough.md`](docs/app-walkthrough.md).
+The top of `/dashboard` is a leader strip that answers "is this working?": verified fixes out of terminal runs, median label-to-verified time, first-pass rate, provider-reported ACUs per verified fix (shown as "Not reported" when the provider returns none), human touches per fix, and jobs needing attention. A per-job throughput list sits beside it.
+
+Engineers do not need the dashboard to follow a run. The worker keeps one **DevinTrace status** comment on the triggering issue and edits it in place as the job moves through its states. It links the Devin session, the PR at its exact commit, the validator verdict, and the correction count. A failed comment write is recorded as an event and never changes the job's status. `python -m app.cli issue-status --job-id <id>` re-syncs a card by hand.
+
+For the five-minute What/How/Why/When walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). For exact routes, payloads, state transitions, and adapter calls, see [`docs/app-walkthrough.md`](docs/app-walkthrough.md).
 
 ## Why Devin
 
@@ -69,19 +73,19 @@ Each phase uses a fresh detached worktree. An autouse external fixture first pro
 
 Before running candidate Python, validation requires a descendant of the pinned baseline, changes only within the registered scope, regular non-executable files, no additions/deletions/renames, and at most 200 changed lines. Test-quality cases allow their registered test file; application cases allow their approved production path and use a trusted acceptance oracle outside the candidate checkout. The validator records the evaluated SHA and re-reads the PR head before accepting it. A moving head is rechecked at most three times.
 
-### Registered cases and evaluation modes
+### Registered cases and live results
 
-Pinned upstream: `5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e`.
+Test-quality cases and `report-anchor-non-string` are pinned to Superset `5ecb19cf92ae8dedbf5b33ec92324cc77c4ee10e` on `remediation-demo`. `import-unparseable-yaml` is pinned to `dedfe23a805151decca6deaf15b032e040e42e82` on `remediation-import-yaml`. `make baseline` confirmed all five before any paid run.
 
-The application case is pinned separately to `dedfe23a805151decca6deaf15b032e040e42e82` and targets the registered `remediation-import-yaml` branch.
+| Case | Kind | Baseline defect | Issue -> PR | Live result |
+| --- | --- | --- | --- | --- |
+| `histogram-invalid-column` | Test quality | Test asserts only inside `except`; a regression that makes invalid values numeric passes it. `"10"` must stay valid. | [#5](https://github.com/dheeraj5612/superset/issues/5) -> [#12](https://github.com/dheeraj5612/superset/pull/12) | `VERIFIED`, first pass |
+| `schema-missing-engine` | Test quality | Test asserts only inside `except`; a regression that accepts parameters without an engine passes it. | [#2](https://github.com/dheeraj5612/superset/issues/2) -> [#11](https://github.com/dheeraj5612/superset/pull/11) | `VERIFIED`, first pass |
+| `superset-normalize-dttm-edge-cases` | Test quality | Edge-case test never checks its result; a regression that skips one-row conversion passes it. | [#9](https://github.com/dheeraj5612/superset/issues/9) -> [#10](https://github.com/dheeraj5612/superset/pull/10) | `VERIFIED`, first pass after an `INFRA_ERROR` re-validation |
+| `report-anchor-non-string` | Application | A list, dict, or number in `extra.dashboard.anchor` raises `TypeError` (HTTP 500) instead of a validation error. | [#13](https://github.com/dheeraj5612/superset/issues/13) -> [#14](https://github.com/dheeraj5612/superset/pull/14) | `VERIFIED`, first pass |
+| `import-unparseable-yaml` | Application | Malformed YAML raises `UnboundLocalError` while building its diagnostic. | [#7](https://github.com/dheeraj5612/superset/issues/7) -> [#8](https://github.com/dheeraj5612/superset/pull/8) | `VERIFIED` in an earlier live run, merged; [archived evidence](evidence/live-application.json) |
 
-| Case | Source inspection | Runtime admission |
-| --- | --- | --- |
-| `histogram-invalid-column` | `test_histogram_with_non_numeric_column` asserts only inside `except`. The challenge makes invalid values numeric without raising. Numeric strings such as `"10"` must remain valid. | **Unconfirmed** |
-| `schema-missing-engine` | `test_database_parameters_schema_mixin_no_engine` asserts only inside `except`. The challenge accepts dynamic-form parameters without an engine. | **Unconfirmed** |
-| `import-unparseable-yaml` | Application oracle exercises valid YAML and malformed YAML against the candidate production module. The baseline defect raises `UnboundLocalError` while constructing the malformed-file diagnostic. | **Confirmed live** ([live evidence](evidence/live-application.json)) |
-
-The two test-quality rows are source-inspected hypotheses, not measured successes. The application row has both a local pinned-source comparator result and one fresh live Devin candidate result. The baseline reproduced the expected regression, the known fixed reference passed locally, and candidate PR #8 passed the independent application oracle with provenance. The live result does not claim a merge, customer impact, ACU cost or savings, or a full Superset suite run. Its evidence labels a provider-reported terminal snapshot of 0.0 ACUs without independent cost verification. The full Superset test-quality environment was unavailable during this build. `make baseline` must produce normal PASS, mutant PASS, and active positive controls for test-quality cases, or a controlled `REGRESSION` result with candidate provenance for the application case, before a case can enter the live queue. A failure to import, collect, or activate is an infrastructure error, not proof of a blind spot. The numeric-string example is not treated as invalid input, and schema tests whose fixture returns a valid dummy engine are not assumed to test an invalid engine.
+Test-quality verification requires the original behavior to `PASS` and the registered regression to fail by assertion. Application verification requires the trusted oracle to report `PASS` after its controls; the baseline must reproduce `REGRESSION`, and a fix that handles only some inputs is `CONTRACT_FAILED`. An import, collection, or activation failure is `INFRA_ERROR`, never a verdict.
 
 Case contracts, paths, baseline SHAs, and test IDs live in `evals/cases.yaml`. Executable commands are constructed by the validator from this trusted registry, never from an issue body. Evidence is pinned to the case and evaluator fingerprints; changing either requires baseline confirmation again.
 
@@ -124,7 +128,13 @@ cp .env.example .env
 docker compose up --build
 ```
 
-This starts the web service in disabled-live mode and persists SQLite in a named volume. It does not start paid execution. Local `make demo` is the shortest credential-free review path.
+This starts the web service in disabled-live mode on `127.0.0.1:8000` and persists SQLite in a named volume. It does not start paid execution. If port 8000 is taken, set `WEB_PORT`, for example `WEB_PORT=8020 docker compose up --build`. To load the credential-free simulation into the same volume:
+
+```bash
+docker compose run --rm web python -m app.cli demo --reset
+```
+
+Verified on 23 September 2026 with Docker Engine 29.5.2 and Compose 5.5.1 from a clean copy without `.env` credentials: the image built, `/` returned 200, `/healthz` reported live disabled, and the in-container demo completed.
 
 The optional `live` Compose profile includes the worker:
 
@@ -159,22 +169,23 @@ The dashboard and `/metrics` JSON are calculated from persisted records: attempt
 
 ## Results and verification
 
-The repository now records three separate evidence layers. The six-job dashboard run is credential-free `SIMULATION` evidence. [`evidence/application-oracle.json`](evidence/application-oracle.json) is the local source comparator for the pinned baseline and known reference. [`evidence/live-application.json`](evidence/live-application.json) records one fresh live Devin application run and its independent candidate validation.
+Live batch, 23 September 2026, on `dheeraj5612/superset`: four labelled issues, four Devin sessions, four candidate PRs, four `VERIFIED` at an exact matching SHA, zero correction messages. Median label-to-verified time is shown on the dashboard. Every job's timeline, API operations, and verdict are exported at `/report.json`. The provider reported `0.0` consumed ACUs for these sessions; that is labelled provider-reported and no cost or savings figure is derived from it.
 
-The pre-redesign control-plane baseline contained 133 passing tests, including real SQLite concurrency, signed HTTP requests, mock v3 requests, restart/ambiguous-response handling, local Git scope/worktree operations, trusted application-oracle controls, subprocess timeout handling, metrics, and the full simulation. These ran with Python 3.14.7 in an isolated virtual environment. HTTP health/metrics, evidence export, escaping, and dashboard rendering checks passed.
+Earlier evidence is kept separate: [`evidence/application-oracle.json`](evidence/application-oracle.json) is the local source comparator for the YAML case, and [`evidence/live-application.json`](evidence/live-application.json) is its earlier live run (PR #8, since merged). The credential-free simulation has its own database and never enters live metrics.
 
-The pinned source comparator recorded baseline `dedfe23...` as `REGRESSION` and reference `22ec1f...` as `PASS`, both with trusted provenance. The fresh live record used one Devin session, produced candidate PR #8 at the validated SHA, and passed the application oracle with zero corrections. It covers the malformed-YAML application contract only; it does not claim the full Superset suite, a merge, customer impact, or ACU cost or savings. The provider terminal snapshot reports 0.0 ACUs, labelled as provider-reported rather than an independent cost result. Local source checks used Python 3.14.7, while GitHub Verify ran the control-plane suite under Python 3.12.14. Docker build/start and the full test-quality Superset evaluation were not executed. Ruff 0.16.8 passed against the checkout. The live record contains no provider credential or private local path.
+The control-plane suite passes under Python 3.14.7 with Ruff clean; GitHub Verify runs it under Python 3.12. Each oracle proves its registered contract, not the full Superset suite.
 
-## Existing work and limitations
+## Limitations
 
-The earlier `src/drp` prototype is consolidated into this smaller `app/` layout rather than keeping two competing implementations. Its datetime-normalization finding and original mutant patch are preserved unchanged under `findings/` as prior research. They are **not** an active registry entry or evidence from this build. Existing `DRP_*` configuration and databases are not migrated; use `.env.example` and a fresh live data directory. PR #2's injected-client authentication concern is covered in the replacement client's tests.
-
-This is a targeted take-home, not a general mutation-testing service. Three selected test-quality node IDs and one registered application oracle are evaluated, not the full Superset suite. Human review must check the complete diff and surrounding tests. Prompt injection and malicious candidate code are not solved; scope checks, evidence checks, and process environment scrubbing reduce mistakes but do not isolate hostile execution. The dashboard has no authentication, SQLite supports one worker, bootstrap and infrastructure revalidation are operator-only commands, and terminal jobs have no automatic retry/reset endpoint. Production work would start with isolated credential-free runners, access control, and an explicit operator reconciliation workflow.
+- Targeted take-home, not a general mutation-testing service: five registered contracts, not the full Superset suite. Human review still checks the complete diff.
+- Candidate code is executable Python. Worktrees, scope checks, and environment scrubbing reduce mistakes; they are not a sandbox against hostile code or prompt injection. Production would start with isolated credential-free runners.
+- The dashboard is unauthenticated; keep it on localhost and expose only the webhook path.
+- SQLite with one worker. Bootstrap and infrastructure re-validation are operator commands; terminal jobs have no automatic retry.
+- The earlier `src/drp` prototype was consolidated into `app/`; its datetime finding is preserved under `findings/` as prior research only.
 
 ## Five-minute walkthrough
 
-Use [`docs/demo-script.md`](docs/demo-script.md) for the four-minute live presentation. Start with the issue #9 trigger, show `app/main.py` for signed admission, `app/orchestrator.py` for durable intent, and `app/validator.py` for independent acceptance. Finish on the live job's exact-SHA proof and human review gate. The simulation remains a separate optional way to show correction and escalation paths.
-
+[`docs/demo-script.md`](docs/demo-script.md) is the Loom script in What/How/Why/When order, with a pre-recording checklist. It follows issue #13 from label to status comment, PR, and independent verdict, then the leader strip.
 
 ### Design and browser review
 
