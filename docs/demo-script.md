@@ -20,9 +20,11 @@ One-line thesis to open and close on:
    - [Job #13 proof](http://127.0.0.1:8010/jobs/2891e18751e344c0b0ea444990cfc310)
    - [Case readiness](http://127.0.0.1:8010/cases#readiness)
    - Editor on `evals/application_cases/report_anchor_type.py` and `evals/cases.yaml`
-3. Confirm the dashboard reads `LIVE`, **4/4 verified**, 0 needing attention.
+3. Bootstrap resources on the dashboard should show Playbook `reused` and
+   Knowledge `created` (refreshed 23 September to list all five cases).
+4. Confirm the dashboard reads `LIVE`, **4/4 verified**, 0 needing attention.
    Confirm the job page says `Exact SHA matched`.
-4. Browser zoom 110%, notifications off, 1080p.
+5. Browser zoom 110%, notifications off, 1080p.
 
 ## Script
 
@@ -30,20 +32,28 @@ One-line thesis to open and close on:
 
 > This is DevinTrace. It turns an approved GitHub issue on our Superset fork
 > into a Devin pull request, then independently proves the fix before a human
-> looks at it. We filed five issues. Four were remediated live and all four
-> are verified on the first pass: three weak tests that let real regressions
-> through, and one production crash where a bad API payload returned a 500.
-> The fifth was already fixed by an earlier Devin PR and closed. The strip at
-> the top is the leader view: verified out of finished, median time from label
-> to verified, first-pass rate, and what needs a human right now.
+> looks at it. Four live runs, four verified on the first pass: three weak
+> tests that let real regressions through, and one API crash that returned a
+> 500. The strip at the top is the leader view: verified out of finished,
+> time from label to proof, first-pass rate, and what needs a human now.
 
 **0:45 to 2:15 | How, live.** Issue #13, then the PR, then the job page.
 
 > An engineer adds one label, `devin-remediate`. GitHub sends a signed webhook;
 > the app checks the signature, the repository, and that this issue is bound
-> to a registered case, then saves one durable job. A single worker uploads
-> the baseline evidence, starts a Devin session capped at 3 ACUs with a shared
-> Playbook and Knowledge note, and polls it.
+> to a registered case, then saves one durable job.
+
+On the job page, scroll to the Devin API card and its **Bootstrap resources**.
+
+> Four Devin APIs, not just sessions. Once per repo, a **Playbook** says how
+> Devin works: reproduce first, smallest fix, allowed files only, never touch
+> the checker, never merge. A **Knowledge** note, generated from our case
+> registry, gives the branch, baseline, and allowed files. Both are named by a
+> hash of their content, so an edited copy is refused. Per job, **Attachments**
+> uploads the baseline proof, and **Sessions** starts one session capped at 3
+> ACUs that references all three, then polls it: 41 calls, zero failures.
+> Sessions also handle crash recovery by job tag and one in-session
+> correction message.
 
 Point at the status comment on the issue.
 
@@ -66,23 +76,19 @@ Open the job page **Proof** and timeline.
 
 **2:15 to 3:30 | Why you can trust the green check.** Editor, oracle file.
 
-> Devin's own "done" is not the signal. The oracle lives in this control-plane
-> repo, outside the checkout Devin edits, and it proves it imported the
-> candidate's code, not an installed copy. It runs controls first: valid
-> anchors must still pass and an unknown tab must still be reported. Then it
-> sends the three bad inputs. All three crash: that is the baseline
-> regression. Some crash: `CONTRACT_FAILED`. A partial fix that only catches
-> one type is rejected. I tested that against a real partial patch.
+> Devin's "done" is not the signal. The oracle lives in this repo, outside
+> the checkout Devin edits, and proves it loaded the candidate's code. Controls
+> first: valid anchors must still pass. Then three bad inputs. All crash is
+> the baseline; some crash is `CONTRACT_FAILED`, so a partial fix is rejected.
 
 Switch to `evals/cases.yaml`, then case readiness.
 
-> Each case pins a baseline commit, the files Devin may change, and its
-> oracle. Before any paid run, `make baseline` must reproduce the bug. For
-> weak-test cases we inject a known regression and require the old test to
-> miss it and Devin's new test to catch it. If the evaluator itself breaks,
-> that is `INFRA_ERROR`, never a pass. Issue #9 hit exactly that on macOS; we
-> fixed the validator and re-checked the same commit without paying for a
-> second session.
+> The whole system is driven by this registry. Each case pins a baseline
+> commit, the files Devin may change, and its oracle. Before any paid run,
+> `make baseline` must reproduce the bug. For weak tests we inject a known
+> regression: the old test misses it, Devin's new test must catch it. If the
+> evaluator breaks, that is `INFRA_ERROR`, never a pass. Issue #9 hit that;
+> we fixed the validator and re-checked the same commit with no new session.
 
 **3:30 to 4:20 | Why this matters to an engineering leader.** Dashboard.
 
@@ -96,10 +102,9 @@ Switch to `evals/cases.yaml`, then case readiness.
 **4:20 to 5:00 | When to use it.**
 
 > Use it where a defect can be stated as a contract with an oracle: weak
-> tests, crash-on-bad-input bugs, dependency or scanner findings. Adding a
-> case is one YAML entry plus one oracle. Next steps for production: isolated
-> runners, auth on the dashboard, and a queue beyond one SQLite worker. It is
-> not for vague feature work, and it never auto-merges.
+> tests, crash-on-bad-input bugs, scanner findings. A new case is one YAML
+> entry plus one oracle. For production: isolated runners, dashboard auth, a
+> real queue. Not for vague feature work, and it never auto-merges.
 > Devin writes the fix; the oracle proves it; a human merges.
 
 ## Facts to keep straight
@@ -110,6 +115,12 @@ Switch to `evals/cases.yaml`, then case readiness.
 - #7 was closed as completed by the earlier Devin PR #8 (historical
   `/evidence` archive); it is not in live counts. Duplicate issue #1 and
   superseded PRs #3, #4, #6 were closed with comments.
+- Devin APIs: Playbooks and Knowledge notes (setup, once per repo; playbook
+  reused, note created). The #13 run used the earlier four-case note; the
+  new case's rules reached Devin through its attachment. The note was
+  refreshed afterwards to list all five. Attachments: 1 per job. Sessions:
+  create 1 per job, 39 polls on #13; list-by-tag recovery and correction
+  messages are built and tested but were not needed live.
 - Each oracle covers its registered contract only, not the full Superset suite.
 - Provider-reported ACUs were `0.0`. Do not quote a dollar cost or savings.
 - Port `8001` simulation is synthetic and never mixed into live metrics.
