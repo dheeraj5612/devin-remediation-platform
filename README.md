@@ -60,6 +60,11 @@ For the five-minute What/How/Why/When walkthrough, use [`docs/demo-script.md`](d
 
 ## Why Devin
 
+- **No per-bug code.** Each bug needs someone to read the code, reproduce it, choose the fix, and write the test. A script, codemod, or linter cannot; Devin does it from a brief.
+- **Autonomous, API-driven.** A copilot needs an engineer driving each step. Here a GitHub event starts a Devin session through the API and a PR comes back with no one watching; the app only polls, reconciles, and sends at most one correction.
+- **Parallel and observable.** Each session has its own machine and opens its own PR, so sessions can run side by side. Every run links its Devin session so reviewers can watch the work.
+- **Safe to hand over.** The independent oracle, not Devin's own "done", decides the outcome.
+
 A syntax rule can identify assertions that only run inside `except`, but it does not establish intended behavior. A repair still needs to understand fixtures, distinguish numeric strings from invalid input, preserve valid behavior, and make a scoped repository change. Devin handles that investigation. The external evaluator, not Devin's completion status or PR description, decides whether the candidate meets the contract.
 
 ## Evaluation
@@ -136,13 +141,20 @@ docker compose run --rm web python -m app.cli demo --reset
 
 Verified on 23 September 2026 with Docker Engine 29.5.2 and Compose 5.5.1 from a clean copy without `.env` credentials: the image built, `/` returned 200, `/healthz` reported live disabled, and the in-container demo completed.
 
-The optional `live` Compose profile includes the worker:
+### Full live stack in containers
+
+`docker-compose.live.yml` runs both web and worker from the `live` image target. That image adds a Linux Python 3.11 evaluator environment at `/opt/superset-venv` (pinned in `docker/superset-evaluator-requirements.txt`), built in its own stage so app edits never rebuild it. The Superset fork checkout is mounted at `/superset` and `./data` at `/data`, so host and container share one set of live jobs, baselines, and Devin context.
 
 ```bash
-docker compose --profile live up --build
+# .env from .env.example with credentials filled in, plus MODE=LIVE and ENABLE_LIVE=true
+SUPERSET_REPO_PATH=/path/to/superset-fork \
+  docker compose -f docker-compose.yml -f docker-compose.live.yml --profile live up -d --build
+docker compose -f docker-compose.yml -f docker-compose.live.yml exec worker python -m app.cli doctor
 ```
 
-For that profile, the mounted Superset checkout needs a **Linux-compatible** prepared interpreter at `/superset/.venv/bin/python`. A macOS virtual environment cannot be reused inside the Linux container. Baseline evidence and context must be prepared in the same named `/data` volume, for example with `docker compose run --rm worker python -m app.cli baseline` and then `bootstrap-context`. Do not mix host-local and container data directories. No full Superset environment is bundled into the web image.
+The dashboard binds to `127.0.0.1:${WEB_PORT:-8010}` only; it has no login, so keep it local. The plain `docker compose --profile live up` (no override file) expects a Linux interpreter inside the mounted checkout at `/superset/.venv/bin/python` and a named `/data` volume; a macOS virtual environment cannot be reused inside the Linux container.
+
+Verified on 24 September 2026 (Colima, Compose override above): web healthy on `127.0.0.1:8010` reporting `LIVE`, all pages 200, all seven readiness gates Pass inside the container, and `app.cli doctor` in the worker returned `ready: true` against the four persisted live jobs.
 
 ## Devin API usage
 
@@ -174,6 +186,31 @@ Live batch, 23 September 2026, on `dheeraj5612/superset`: four labelled issues, 
 Earlier evidence is kept separate: [`evidence/application-oracle.json`](evidence/application-oracle.json) is the local source comparator for the YAML case, and [`evidence/live-application.json`](evidence/live-application.json) is its earlier live run (PR #8, since merged). The credential-free simulation has its own database and never enters live metrics.
 
 The control-plane suite passes under Python 3.14.7 with Ruff clean; GitHub Verify runs it under Python 3.12. Each oracle proves its registered contract, not the full Superset suite.
+
+## Why Devin, not something else
+
+| Option | Good at | Why it falls short here |
+|---|---|---|
+| Rule bots, codemods | Known mechanical patterns | Cannot read intent, reproduce a bug, or write a new test |
+| IDE copilot | Suggestions while an engineer types | An engineer drives each step; no event trigger |
+| Raw LLM API call | A patch from text | No repo, shell, or tests; we would build the agent loop, sandbox, git, and PR flow |
+| **Devin** | Own machine: clone, reproduce, fix, test, push, open PR | Fits: Sessions (budget caps, tags, messages), Playbooks, Knowledge, and Attachments are the harness we would otherwise build |
+
+## Key architectural decisions
+
+1. **Allow-list, not free text.** Only issues bound to `evals/cases.yaml` start work; HMAC-verified webhook; unapproved issues get 422. `app/main.py`, `app/cases.py`
+2. **Durable job before any paid call.** SQLite row written under `BEGIN IMMEDIATE`; GitHub redeliveries reuse the job. Guarded state machine. `app/db.py`, `app/models.py`
+3. **Crash-safe sessions.** Sessions tagged `drp-<job id>`; lost create replies are recovered by listing by tag. `max_acu_limit` per session; at most one correction message in the same session. `app/devin.py`, `app/orchestrator.py`
+4. **Team rules as versioned config.** Playbook and Knowledge created once per repo, named by content hash, so a changed copy is never silently reused. `app/devin.py`
+5. **Separate trust plane.** Validator fetches the PR head, detached worktree at the exact SHA, modify-only scope check against `allowed_paths`, scrubbed env, control-plane oracle. Only it can say `VERIFIED`; `INFRA_ERROR` is never a pass. `app/validator.py`
+6. **Evidence-first observability.** Every step is an event; metrics, dashboard, and `/report.json` derive from the log. Status comment edited in place via hidden marker. `app/report.py`, `app/metrics.py`, `app/issue_status.py`
+7. **Credential-free simulation** with fake providers, never mixed into live metrics. `app/simulation.py`
+
+## Next steps in a customer engagement
+
+1. Week 1: connect the customer's scanner (e.g. Snyk, CodeQL) or Jira feed as the trigger alongside the GitHub label.
+2. Pilot: 10 to 20 approved cases with success targets agreed with the team: proven-fix rate, label-to-proof time, reviewer minutes per PR.
+3. Scale: grow the case library (one YAML entry + one oracle each), run sessions in parallel on isolated runners, add auth and a real queue, and report provider-reported ACUs per proven fix.
 
 ## Limitations
 

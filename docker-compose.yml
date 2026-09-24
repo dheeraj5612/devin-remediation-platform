@@ -1,6 +1,6 @@
 services:
   web:
-    build: .
+    build: {context: ., target: base}
     ports:
       - "127.0.0.1:${WEB_PORT:-8000}:8000"
     env_file:
@@ -11,7 +11,7 @@ services:
     volumes:
       - data:/data
   worker:
-    build: .
+    build: {context: ., target: base}
     profiles: [live]
     command: python worker.py
     healthcheck:

@@ -9,6 +9,7 @@
   <section class="what-intro" aria-labelledby="what-intro-heading">
     <p class="eyebrow">What this is</p>
     <h2 id="what-intro-heading">Approved issue in, proven fix out.</h2>
+    <p class="what-problem">Problem: a backlog of small, well-defined bugs no one has time for, and AI fixes reviewers can't trust without re-checking. That costs senior review time and leaves real risk unfixed.</p>
     <ul>
       <li>Label an issue; Devin opens the PR.</li>
       <li>Independent oracle proves the fix.</li>
@@ -94,6 +95,19 @@
       <li>Not for: vague feature work.</li>
       <li>Never auto-merges; human reviews every PR.</li>
       <li>Production next: isolated runners, dashboard auth, real queue.</li>
+    </ul>
+    <p class="eyebrow">Why Devin</p>
+    <ul>
+      <li>Each bug needs reading, reproducing, fixing, and testing: no script or codemod does that.</li>
+      <li>API-driven and autonomous: an event fires, a PR comes back, no engineer driving.</li>
+      <li>Own machine, own PR: sessions run in parallel; every run links the session to watch.</li>
+      <li>Without an autonomous agent: an engineer per bug or custom code per bug. Not practical.</li>
+    </ul>
+    <p class="eyebrow">In a customer engagement</p>
+    <ul>
+      <li>Week 1: customer's scanner or Jira feed as the trigger.</li>
+      <li>Pilot: 10 to 20 cases with agreed targets (proven-fix rate, time to proof, review time).</li>
+      <li>Then: grow the case library, parallel sessions, provider-reported cost per proven fix.</li>
     </ul>
   </section>
 </div>

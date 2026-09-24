@@ -11,18 +11,19 @@ One-line thesis to open and close on:
 
 ## Pre-recording checklist
 
-1. Web on 8010 is running (`curl -s http://127.0.0.1:8010/healthz` says `LIVE`).
-   The worker can stay stopped; everything shown is persisted evidence.
+1. Stack runs in containers: `docker compose -f docker-compose.yml -f docker-compose.live.yml --profile live up -d`.
+   `curl -s http://127.0.0.1:8010/healthz` says `LIVE`. Everything shown is persisted evidence.
 2. Tabs, left to right:
-   1. [Dashboard](http://127.0.0.1:8010/dashboard) (What; back here for the leader view)
+   0. [Landing](http://127.0.0.1:8010/) (What; later Architecture, Why Devin, When)
+   1. [Dashboard](http://127.0.0.1:8010/dashboard) (leader strip)
    2. [Issue #13](https://github.com/dheeraj5612/superset/issues/13#issuecomment-5789275304) at the **DevinTrace status** comment
-   3. [PR #14 Files changed](https://github.com/dheeraj5612/superset/pull/14/files)
-   4. [PR #14](https://github.com/dheeraj5612/superset/pull/14#issuecomment-5818401237) at the **DevinTrace verification** comment
-   5. [Job #13](http://127.0.0.1:8010/jobs/2891e18751e344c0b0ea444990cfc310): How this run worked, Devin API activity, Proof, timeline
+   3. [Job #13](http://127.0.0.1:8010/jobs/2891e18751e344c0b0ea444990cfc310): How this run worked, Watch Devin work, Devin API activity, Proof
+   4. [Devin session](https://app.devin.ai/sessions/80ee022794704af7aee70293bba9790d) for #13 (keep sidebar and secrets out of frame)
+   5. [PR #14 Files changed](https://github.com/dheeraj5612/superset/pull/14/files)
    6. [Oracle](https://github.com/dheeraj5612/devin-remediation-platform/blob/main/evals/application_cases/report_anchor_type.py) `report_anchor_type.py`
    7. [Registry](https://github.com/dheeraj5612/devin-remediation-platform/blob/main/evals/cases.yaml) `evals/cases.yaml`
-   8. [Contracts](http://127.0.0.1:8010/cases#readiness): readiness, why trust, when to use
-   9. [`/report.json`](http://127.0.0.1:8010/report.json)
+   8. [Contracts](http://127.0.0.1:8010/cases#readiness): readiness, why trust
+   9. [`/report.json`](http://127.0.0.1:8010/report.json) (optional)
 3. The Devin API card's **Once per repository** group should show Playbooks
    `reused` and Knowledge `created` (refreshed 23 September to list all five cases).
 4. Confirm the dashboard reads `LIVE`, **4/4 verified**, 0 needing attention.
@@ -31,88 +32,97 @@ One-line thesis to open and close on:
 
 ## Script
 
-**0:00 to 0:45 | What.** Dashboard, leader strip.
+**0:00 to 0:35 | What.** Tab 0, landing hero. Then tab 1, leader strip.
 
-> This is DevinTrace. You give it a bug report. Devin writes the fix. Then a
-> separate checker, one Devin can't touch, proves the fix really works before
-> any human spends time on it. We ran it four times for real on our Superset
-> fork. Four fixes, all proven on the first try: three tests that were too
-> weak to catch real bugs, and one API that crashed on bad input. The strip
-> at the top is the manager's view: how many fixes were proven, how fast,
-> and what still needs a person.
+> Every engineering team has a backlog of small, well-defined bugs: tests
+> too weak to catch regressions, APIs that crash on bad input, scanner
+> findings. Nobody gets to them, so real risk sits unfixed. And when an AI
+> writes a fix, a senior reviewer still has to work out whether it actually
+> works, so the time saved goes straight back into checking. DevinTrace
+> solves both.
+> Devin writes the fix. A separate checker Devin can't touch proves it works.
+> A human only adds a label and reviews the PR. We ran it four times for real
+> on our Superset fork: four fixes, all proven on the first try.
 
-**0:45 to 2:15 | How, live.** Start on tab 2 (issue #13).
+Tab 1:
+
+> This strip is the manager's view: proven fixes, time to proof, and what
+> still needs a person.
+
+**0:35 to 2:15 | How, live.** Tab 2, issue #13.
 
 > It starts with one label. An engineer tags the issue `devin-remediate`.
-> GitHub sends us a signed message. We check it really came from GitHub, from
-> our repo, and that this issue is one we've approved. Then we save one job
-> that survives a restart.
+> GitHub sends us a signed message. We check it came from our repo and that
+> this issue is one we've approved, then save one job that survives a restart.
 
-Tab 5, job page: walk **How this run worked** (steps 01 to 06), then the
-**Devin API activity** card: **Per run** rows, then **Once per repository**.
+Tab 3, job page: **How this run worked**, then the **Devin API activity** card.
 
-> We use four Devin APIs, not just one. Think of it like onboarding a new
-> engineer. The **Playbook** is the team handbook: reproduce the bug first,
-> make the smallest fix, only touch allowed files, never touch the checker,
-> never merge. The **Knowledge** note is the project brief: which branch,
-> which files, what "broken" looks like. We set both up once, and fingerprint
-> them, so a changed copy gets rejected. Then for each bug, **Attachments**
-> hands Devin the evidence, and **Sessions** starts the work with a budget
-> cap and checks in until the PR is ready. Here: 41 API calls, zero failures.
-> If our app crashes, it finds the session again. If the fix is wrong, it
-> sends Devin one correction.
+> We use four Devin APIs. The **Playbook** is the team handbook: reproduce
+> first, smallest fix, allowed files only, never touch the checker, never
+> merge. **Knowledge** is the project brief: branch, files, what "broken"
+> looks like. Both are set up once per repo. **Attachments** hand Devin the
+> evidence for this bug, and **Sessions** starts the work with a budget cap
+> and checks in until the PR is ready. 41 calls, zero failures.
 
-Back to tab 2: point at the status comment.
+Click **Open the Devin session** (tab 4). Scroll through the work.
 
-> Engineers don't need a new dashboard to follow along. This one comment on
-> the issue updates itself: working, PR opened, checking, verified. It links
-> Devin's session, the exact PR commit, and the result. The reviewer sees the
-> same card on the PR.
+> Here's Devin actually doing it. It got our brief and evidence through the
+> API, read the code, reproduced the crash, made a one-file fix, ran checks,
+> and opened the PR. Nobody was driving; our app just checked in.
 
-Tab 3: PR **Files changed**. Optionally flash tab 4, the same card on the PR.
+Tab 5, PR **Files changed**.
 
-> Devin changed one file, the only one it was allowed to. The bug: this API
-> expected text, but got a list or a number and crashed. Now it politely says
-> "that's not valid" instead.
+> One file, the only one it was allowed to touch. The API expected text, got
+> a list or a number, and crashed. Now it returns a clean validation error.
 
-Tab 5: job page **Proof** and timeline.
+Tab 2, status comment.
 
-> Now the checker. It grabs that exact commit and tests it on its own. Before
-> the fix: broken. After: passes. Same commit Devin pushed, same commit we
-> tested, so it's marked verified. Label to proof took about four minutes.
+> Engineers follow along right here: one comment that updates itself.
+> Working, PR opened, checking, verified. The reviewer sees the same card on
+> the PR.
 
-**2:15 to 3:30 | Why you can trust the green check.** Tab 6, oracle file.
+Tab 3, **Proof**.
 
-> Devin saying "done" isn't proof. Our checker lives outside Devin's reach, so
-> Devin can't grade its own homework. First it checks good inputs still work.
-> Then it throws three bad inputs at it. If only some are fixed, that's a
-> partial fix, and it's rejected.
+> Then the checker grabs that exact commit and tests it on its own. Before:
+> broken. After: passes. Same commit Devin pushed, same one we tested. Label
+> to proof: about four minutes.
 
-Tab 7 (`evals/cases.yaml`), then tab 8 (Contracts, readiness).
+**2:15 to 3:00 | How: architecture.** Tab 0, **Key architectural decisions**.
 
-> Everything is driven by this one list of approved bugs. Each entry says
-> where the bug lives, which files Devin may touch, and which checker proves
-> it. Before we spend a cent, we confirm the bug actually reproduces. For
-> weak tests, we plant a known bug: the old test misses it, Devin's new test
-> has to catch it. And if the checker itself breaks, that's never counted as
-> a pass. That happened once, on issue #9. We fixed the checker and re-tested
-> the same commit, without paying Devin again.
+> A few decisions make this safe to run unattended. Only approved issues
+> start work. The job is saved before we pay for anything, so GitHub retries
+> never double-bill. Every Devin session is tagged, so if we crash we find it
+> again instead of starting over. And the checker is a separate trust plane:
+> it checks out the exact commit, rejects edits outside the allowed files,
+> strips secrets, and only it can say verified.
 
-**3:30 to 4:20 | Why this matters to an engineering leader.** Tab 1, leader strip.
+**3:00 to 3:40 | Why trust the green check.** Tab 6 oracle, tab 7
+`cases.yaml`, tab 8 Contracts.
 
-> So how would you know it's working? Count proven fixes, not PRs opened.
-> Watch time from label to proof. Watch how often Devin gets it right the
-> first time; it gets at most one retry. Human effort per fix: one label, one
-> review. Cost per fix only shows when Devin reports it; we never guess. And
-> it's all available as JSON for your own dashboards.
+> The checker lives outside Devin's reach. Good inputs must still work, and
+> all three bad inputs must be rejected; a partial fix fails. Everything comes
+> from this one list of approved bugs: where it lives, which files Devin may
+> touch, which checker proves it. We confirm every bug reproduces before
+> spending a cent, and a broken checker never counts as a pass.
 
-**4:20 to 5:00 | When to use it.** Tab 8, When to use it.
+**3:40 to 4:20 | Why Devin.** Tab 0, **Why Devin is the right tool here**.
 
-> Use it for bugs you can check automatically: weak tests, crashes on bad
-> input, security scanner findings. Adding a new bug type is one config entry
-> and one checker. Don't use it for fuzzy feature work, and it never merges
-> on its own. To run it in production, we'd add isolated machines, a login,
-> and a real job queue. Devin writes the fix. The checker proves it. A human
+> Why Devin? Without an autonomous agent this isn't practical: every bug
+> needs either an engineer at the keyboard or custom code written for it.
+> A codemod can't read intent or write a
+> new test. A copilot needs an engineer driving every step. A raw model call
+> has no repo, no shell, no tests; we'd have to build the whole agent
+> ourselves. Devin has its own machine, and its API already gives us budget
+> caps, tags, follow-up messages, and team rules. Our part is the trigger,
+> the scope, and the proof.
+
+**4:20 to 5:00 | When.** Tab 1 leader strip, then tab 0 **When**.
+
+> How would a leader know it's working? Count proven fixes, not PRs. Time to
+> proof. First-try rate. One label and one review per fix, all exportable as
+> JSON. Next, in a real customer engagement: week one, plug in their scanner or Jira feed. Pilot
+> ten to twenty cases with agreed targets. Then grow the case library and run
+> sessions in parallel. Devin writes the fix. The checker proves it. A human
 > merges.
 
 ## Facts to keep straight

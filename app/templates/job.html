@@ -20,6 +20,10 @@
       <li><span class="story-index mono">05</span><p>Independent oracle ran on that exact commit: baseline {{ (selected_case.baseline.application_status if selected_job.case_kind == 'application' else selected_case.baseline.mutant) or 'Not recorded' }}, candidate {{ selected_story.after }} → {{ selected_story.status|replace('_',' ')|title }}.</p></li>
       <li><span class="story-index mono">06</span><p>Status comment on the issue edited in place at each step; human reviews and merges.{% if not report.truth.simulation and selected_story.pr_url %} Same card is posted on the PR for the reviewer.{% endif %}</p></li>
     </ol>
+    {% if not report.truth.simulation and selected_story.session_url %}
+    {# ELI5: the recorded Devin session is where a viewer can watch the agent do the work. #}
+    <div class="watch-devin"><p class="eyebrow">Behind the scenes</p><h3>Watch Devin work.</h3><p>Open the recorded session to see Devin receive the brief and evidence through the API, read the code, reproduce the bug, make the fix, run checks, and open PR #{{ selected_story.pr_number or 'Not recorded' }}. The app only polled; no one was driving. <a href="{{ selected_story.session_url }}">Open the Devin session ↗</a></p></div>
+    {% endif %}
   </section>
   <nav class="detail-nav" aria-label="Run evidence sections"><a href="#proof-heading">Proof ↓</a><a href="#boundary-heading">Scope ↓</a><a href="#events-heading">Events ↓</a></nav>
   {{ provider_api_card(selected_provider_api, true) }}

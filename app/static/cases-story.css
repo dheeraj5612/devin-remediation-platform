@@ -2,6 +2,7 @@
    ELI5: short headline + a few short bullets per block, not a wall of prose. */
 .story-block { border-top: 1px solid var(--line); padding-block: 28px 32px; }
 .story-block h2 { font-size: 22px; }
+.story-block .story-subhead { margin-top: 20px; font-size: 17px; }
 .story-block .eyebrow { color: var(--muted); margin-bottom: 8px; }
 .story-bullets { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 9px; max-width: 640px; }
 .story-bullets li { font-size: 14px; line-height: 1.4; padding-left: 16px; position: relative; }
