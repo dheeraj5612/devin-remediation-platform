@@ -12,7 +12,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.cases import Registry
 from app.config import ROOT, Settings
 from app.db import Store
-from app.presentation import human_time, job_title, linked_verdict, provider_api_card, recorded_evidence, workbench
+from app.presentation import (PROVIDER_OPERATION_LABELS, human_time, job_title, linked_verdict,
+                              provider_api_card, recorded_evidence, run_story, workbench)
 from app.report import build_report
 
 
@@ -21,7 +22,8 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
     app.mount("/static", StaticFiles(directory=str(ROOT / "app/static")), name="static")
     templates = Jinja2Templates(directory=str(ROOT / "app/templates"))
     templates.env.filters.update(date=human_time, clock=lambda value: human_time(value, short=True),
-                                 job_title=job_title, linked_verdict=linked_verdict)
+                                 job_title=job_title, linked_verdict=linked_verdict,
+                                 operation_label=lambda key: PROVIDER_OPERATION_LABELS.get(key, key))
 
     def page(request: Request, template: str, title: str, page_name: str,
              context: dict[str, Any] | None = None, status: int = 200) -> Response:
@@ -46,7 +48,8 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
             "report": report, "metrics": report["metrics"], "workflow": report["workflow"],
             "portfolio": report["cases"], "readiness": report["readiness"],
             "desk": workbench(report, query.get("q", ""), query.get("view", "all"),
-                              query.get("kind", "all"), query.get("sort", "attention"), page_number),
+                              query.get("kind", "all"), query.get("sort", "attention"), page_number,
+                              max_acu=settings.devin_max_acu),
         }
 
     @app.get("/", response_class=HTMLResponse)
@@ -75,11 +78,11 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
             case = {"baseline": {"statement": "The original contract is no longer registered."},
                     "contract": "Original contract unavailable. Inspect the exported run before review.",
                     "acceptance": "Not available", "allowed_paths": [], "acceptance_test": None}
-        context.update(selected_job=job, selected_case=case,
+        context.update(selected_job=job, selected_case=case, selected_story=run_story(job),
                        selected_provider_api=provider_api_card(
                            job.get("provider_api"),
                            bootstrap=context["report"].get("provider_api", {}).get("bootstrap"),
-                           mode=settings.mode,
+                           mode=settings.mode, max_acu=settings.devin_max_acu,
                        ),
                        milestone_types={"QUEUED", "SESSION_ATTACHED", "PR_OPENED", "EVALUATED",
                                         "CORRECTION_SENT", "VERIFIED", "ESCALATED", "FAILED",

@@ -20,15 +20,30 @@ SHORT_TITLES = {
     "superset-normalize-dttm-edge-cases": "Datetime edge cases",
 }
 
-# ELI5: keep provider operation names compact and consistent across dashboard surfaces.
+# ELI5: name each Devin API call so a reader knows which endpoint ran and why.
 PROVIDER_OPERATION_LABELS = {
-    "attachment_upload": "Attachment upload",
-    "session_create": "Session create",
-    "session_poll": "Session poll",
-    "list_reconcile": "Session reconcile",
-    "correction_message": "Correction message",
+    "attachment_upload": "Attachments API · upload",
+    "session_create": "Sessions API · create",
+    "session_poll": "Sessions API · poll",
+    "list_reconcile": "Sessions API · list by tag",
+    "correction_message": "Sessions API · message",
+}
+# ELI5: one short, presenter-style cue per operation, paraphrased from the Loom script.
+PROVIDER_OPERATION_CUES = {
+    "attachment_upload": "Uploads the case's baseline proof for Devin.",
+    "session_create": "Starts one session capped at 3 ACUs, referencing playbook, note, attachment.",
+    "session_poll": "Polls session status until Devin opens a PR.",
+    "list_reconcile": "Recovers this job's session by tag after a restart.",
+    "correction_message": "Sends one correction if the oracle rejects the PR.",
 }
 PROVIDER_OPERATION_ORDER = tuple(PROVIDER_OPERATION_LABELS)
+# ELI5: name and cue the two once-per-repository bootstrap resources the same way.
+BOOTSTRAP_RESOURCE_LABELS = {"playbook": "Playbooks API", "knowledge": "Knowledge API"}
+BOOTSTRAP_RESOURCE_CUES = {
+    "playbook": "How Devin works: reproduce, smallest fix, allowed files only, "
+                "never edit the checker, never merge.",
+    "knowledge": "Case rules from evals/cases.yaml: branch, baseline, allowed files.",
+}
 
 
 def human_time(value: str | None, short: bool = False) -> str:
@@ -60,7 +75,7 @@ def _safe_nonnegative(value: Any, *, decimal: bool = False) -> int | float | Non
 
 
 def provider_api_card(summary: dict[str, Any] | None, bootstrap: dict[str, Any] | None = None,
-                     mode: str | None = None) -> dict[str, Any]:
+                     mode: str | None = None, max_acu: int | None = None) -> dict[str, Any]:
     """Prepare a compact, safe provider activity card for dashboard templates."""
     # ELI5: tolerate older reports that predate provider operation summaries.
     summary = summary if isinstance(summary, dict) else {}
@@ -83,9 +98,14 @@ def provider_api_card(summary: dict[str, Any] | None, bootstrap: dict[str, Any] 
         count = int(_safe_nonnegative(raw.get("event_count")) or 0)
         successes = min(int(_safe_nonnegative(raw.get("success_count")) or 0), count)
         raw_latency = raw.get("latency_ms") if isinstance(raw.get("latency_ms"), dict) else {}
+        # ELI5: the session-create cue quotes the app's real configured spend cap, never a guess.
+        cue = (f"Starts one session capped at {max_acu} ACUs, referencing playbook, note, attachment."
+               if key == "session_create" and isinstance(max_acu, int) and not isinstance(max_acu, bool) and max_acu > 0
+               else PROVIDER_OPERATION_CUES[key])
         operation_rows.append({
             "key": key,
             "label": PROVIDER_OPERATION_LABELS[key],
+            "cue": cue,
             "event_count": count,
             "success_count": successes,
             "latency_ms": {
@@ -106,6 +126,13 @@ def provider_api_card(summary: dict[str, Any] | None, bootstrap: dict[str, Any] 
         action = raw.get("action") if raw.get("action") in {"created", "reused", "NOT_RECORDED"} else "NOT_RECORDED"
         return {"status": status, "action": action}
 
+    # ELI5: one row per bootstrap resource, always shown even when never recorded.
+    bootstrap_rows = [
+        {"key": key, "label": BOOTSTRAP_RESOURCE_LABELS[key], "cue": BOOTSTRAP_RESOURCE_CUES[key],
+         **resource(key)}
+        for key in ("playbook", "knowledge")
+    ]
+
     return {
         "mode": selected_mode,
         "status": "RECORDED" if event_count else "NOT_RECORDED",
@@ -120,7 +147,33 @@ def provider_api_card(summary: dict[str, Any] | None, bootstrap: dict[str, Any] 
             "timestamp": raw_bootstrap.get("timestamp") if isinstance(raw_bootstrap.get("timestamp"), str) else "NOT_RECORDED",
             "playbook": resource("playbook"),
             "knowledge": resource("knowledge"),
+            "rows": bootstrap_rows,
         },
+    }
+
+
+def run_story(job: dict[str, Any]) -> dict[str, Any]:
+    """Build safe 'how this run worked' fields from persisted job data only.
+
+    ELI5: every field is either a real recorded fact, taken straight from the
+    job dict the report already produced, or the literal string "Not recorded".
+    Nothing here is invented.
+    """
+    links = job.get("links") or {}
+    validation = job.get("validation") or {}
+    after = validation.get("application_status") if job.get("case_kind") == "application" else validation.get("mutant")
+    sha = job.get("candidate_sha")
+    return {
+        "issue_number": job.get("issue_number"),
+        "issue_url": links.get("issue"),
+        "case_id": job.get("case_id") or "Not recorded",
+        "session_url": links.get("session"),
+        "pr_number": job.get("candidate_pr_number"),
+        "pr_url": links.get("pull_request"),
+        "short_sha": sha[:8] if isinstance(sha, str) and sha else None,
+        "after": after or "Not recorded",
+        "status": job.get("status") or "Not recorded",
+        "label_to_verified": job.get("label_to_verified") or "Not recorded",
     }
 
 
@@ -133,7 +186,8 @@ def group_matches(job: dict[str, Any], view: str) -> bool:
 
 
 def workbench(report: dict[str, Any], query: str = "", view: str = "all",
-              kind: str = "all", sort: str = "attention", page: int = 1) -> dict[str, Any]:
+              kind: str = "all", sort: str = "attention", page: int = 1,
+              max_acu: int | None = None) -> dict[str, Any]:
     """Build a bounded, URL-addressable view; global metrics remain clearly global."""
     query = query.strip()[:200]
     view = view if view in VIEWS else "all"
@@ -165,6 +219,11 @@ def workbench(report: dict[str, Any], query: str = "", view: str = "all",
         "verified_count": sum(group_matches(job, "verified") for job in report["jobs"]),
         "attention_count": sum(group_matches(job, "attention") for job in report["jobs"]),
         "unlinked_count": sum(linked_verdict(job) == "INCOMPLETE" for job in report["jobs"]),
+        # ELI5: split verified runs by workflow kind for the dashboard's plain-language breakdown.
+        "verified_test_quality": sum(group_matches(job, "verified") and job["case_kind"] == "test_quality"
+                                      for job in report["jobs"]),
+        "verified_application": sum(group_matches(job, "verified") and job["case_kind"] == "application"
+                                     for job in report["jobs"]),
         **params, "rows": rows[(page - 1) * page_size:page * page_size],
         "counts": counts, "total": total, "page": page, "pages": pages,
         "start": (page - 1) * page_size + 1 if total else 0,
@@ -176,7 +235,8 @@ def workbench(report: dict[str, Any], query: str = "", view: str = "all",
         "return_query": urlencode({**params, "page": page}),
         "filtered": bool(query or view != "all" or kind != "all"),
         # ELI5: keep the dashboard card read-only and derived from the canonical report.
-        "provider_api": provider_api_card(report.get("provider_api"), mode=report.get("truth", {}).get("mode")),
+        "provider_api": provider_api_card(report.get("provider_api"), mode=report.get("truth", {}).get("mode"),
+                                          max_acu=max_acu),
     }
 
 

@@ -14,14 +14,17 @@ One-line thesis to open and close on:
 1. Web on 8010 is running (`curl -s http://127.0.0.1:8010/healthz` says `LIVE`).
    The worker can stay stopped; everything shown is persisted evidence.
 2. Tabs, left to right:
-   - [Live dashboard](http://127.0.0.1:8010/dashboard) (leader strip at top)
-   - [Issue #13](https://github.com/dheeraj5612/superset/issues/13) scrolled to the **DevinTrace status** comment
-   - [PR #14](https://github.com/dheeraj5612/superset/pull/14) on **Files changed**
-   - [Job #13 proof](http://127.0.0.1:8010/jobs/2891e18751e344c0b0ea444990cfc310)
-   - [Case readiness](http://127.0.0.1:8010/cases#readiness)
-   - Editor on `evals/application_cases/report_anchor_type.py` and `evals/cases.yaml`
-3. Bootstrap resources on the dashboard should show Playbook `reused` and
-   Knowledge `created` (refreshed 23 September to list all five cases).
+   1. [Dashboard](http://127.0.0.1:8010/dashboard) (What; back here for the leader view)
+   2. [Issue #13](https://github.com/dheeraj5612/superset/issues/13#issuecomment-5789275304) at the **DevinTrace status** comment
+   3. [PR #14 Files changed](https://github.com/dheeraj5612/superset/pull/14/files)
+   4. [PR #14](https://github.com/dheeraj5612/superset/pull/14#issuecomment-5818401237) at the **DevinTrace verification** comment
+   5. [Job #13](http://127.0.0.1:8010/jobs/2891e18751e344c0b0ea444990cfc310): How this run worked, Devin API activity, Proof, timeline
+   6. [Oracle](https://github.com/dheeraj5612/devin-remediation-platform/blob/main/evals/application_cases/report_anchor_type.py) `report_anchor_type.py`
+   7. [Registry](https://github.com/dheeraj5612/devin-remediation-platform/blob/main/evals/cases.yaml) `evals/cases.yaml`
+   8. [Contracts](http://127.0.0.1:8010/cases#readiness): readiness, why trust, when to use
+   9. [`/report.json`](http://127.0.0.1:8010/report.json)
+3. The Devin API card's **Once per repository** group should show Playbooks
+   `reused` and Knowledge `created` (refreshed 23 September to list all five cases).
 4. Confirm the dashboard reads `LIVE`, **4/4 verified**, 0 needing attention.
    Confirm the job page says `Exact SHA matched`.
 5. Browser zoom 110%, notifications off, 1080p.
@@ -37,13 +40,14 @@ One-line thesis to open and close on:
 > 500. The strip at the top is the leader view: verified out of finished,
 > time from label to proof, first-pass rate, and what needs a human now.
 
-**0:45 to 2:15 | How, live.** Issue #13, then the PR, then the job page.
+**0:45 to 2:15 | How, live.** Start on tab 2 (issue #13).
 
 > An engineer adds one label, `devin-remediate`. GitHub sends a signed webhook;
 > the app checks the signature, the repository, and that this issue is bound
 > to a registered case, then saves one durable job.
 
-On the job page, scroll to the Devin API card and its **Bootstrap resources**.
+Tab 5, job page: walk **How this run worked** (steps 01 to 06), then the
+**Devin API activity** card: **Per run** rows, then **Once per repository**.
 
 > Four Devin APIs, not just sessions. Once per repo, a **Playbook** says how
 > Devin works: reproduce first, smallest fix, allowed files only, never touch
@@ -51,37 +55,38 @@ On the job page, scroll to the Devin API card and its **Bootstrap resources**.
 > registry, gives the branch, baseline, and allowed files. Both are named by a
 > hash of their content, so an edited copy is refused. Per job, **Attachments**
 > uploads the baseline proof, and **Sessions** starts one session capped at 3
-> ACUs that references all three, then polls it: 41 calls, zero failures.
+> ACUs that references all three, then polls it: 41 API calls, zero failures.
 > Sessions also handle crash recovery by job tag and one in-session
 > correction message.
 
-Point at the status comment on the issue.
+Back to tab 2: point at the status comment.
 
 > Status is written back where engineers already look. This one comment is
 > edited in place as the job moves: running, PR opened, validating, verified.
-> It links the Devin session, the PR at an exact commit, and the verdict.
+> It links the Devin session, the PR at an exact commit, which APIs ran, and
+> the verdict. The same card sits on the PR for the reviewer.
 
-Open the PR's **Files changed**.
+Tab 3: PR **Files changed**. Optionally flash tab 4, the same card on the PR.
 
 > Devin touched one file, the only path this case allows. Report anchors from
 > the API can be a list, a dict, or a number; the old code crashed on all of
 > them. Now each becomes a normal validation error.
 
-Open the job page **Proof** and timeline.
+Tab 5: job page **Proof** and timeline.
 
 > The validator fetched that exact commit into a detached checkout and ran
 > our oracle against it. Baseline: regression. Candidate: pass. The candidate
 > and validated SHAs match, so the job is `VERIFIED`. Label to verified took
 > about four minutes.
 
-**2:15 to 3:30 | Why you can trust the green check.** Editor, oracle file.
+**2:15 to 3:30 | Why you can trust the green check.** Tab 6, oracle file.
 
 > Devin's "done" is not the signal. The oracle lives in this repo, outside
 > the checkout Devin edits, and proves it loaded the candidate's code. Controls
 > first: valid anchors must still pass. Then three bad inputs. All crash is
 > the baseline; some crash is `CONTRACT_FAILED`, so a partial fix is rejected.
 
-Switch to `evals/cases.yaml`, then case readiness.
+Tab 7 (`evals/cases.yaml`), then tab 8 (Contracts, readiness).
 
 > The whole system is driven by this registry. Each case pins a baseline
 > commit, the files Devin may change, and its oracle. Before any paid run,
@@ -90,16 +95,16 @@ Switch to `evals/cases.yaml`, then case readiness.
 > evaluator breaks, that is `INFRA_ERROR`, never a pass. Issue #9 hit that;
 > we fixed the validator and re-checked the same commit with no new session.
 
-**3:30 to 4:20 | Why this matters to an engineering leader.** Dashboard.
+**3:30 to 4:20 | Why this matters to an engineering leader.** Tab 1, leader strip.
 
 > How would you know it is working? Verified over finished, not "PRs opened."
 > Time from label to independent proof. First-pass rate, so you see how often
 > Devin needs a correction; it gets at most one, in the same session. Human
 > touches per fix: one label, one review. And ACUs per verified fix, which
-> shows "Not reported" because the API reports 0.0 for these sessions; we do
-> not invent a cost figure. The same numbers export as JSON at `/report.json`.
+> reads "Not reported": we show only provider-reported usage and never
+> estimate a cost. The same numbers export as JSON at `/report.json`.
 
-**4:20 to 5:00 | When to use it.**
+**4:20 to 5:00 | When to use it.** Tab 8, When to use it.
 
 > Use it where a defect can be stated as a contract with an oracle: weak
 > tests, crash-on-bad-input bugs, scanner findings. A new case is one YAML
@@ -122,5 +127,6 @@ Switch to `evals/cases.yaml`, then case readiness.
   create 1 per job, 39 polls on #13; list-by-tag recovery and correction
   messages are built and tested but were not needed live.
 - Each oracle covers its registered contract only, not the full Superset suite.
-- Provider-reported ACUs were `0.0`. Do not quote a dollar cost or savings.
+- No ACU figure is recorded by the app, so the leader strip reads "Not reported".
+  Do not quote a dollar cost or savings.
 - Port `8001` simulation is synthetic and never mixed into live metrics.

@@ -6,6 +6,7 @@
     doctor             list everything still missing before the live worker may run
     revalidate         retry one infrastructure-failed PR at its unchanged SHA, without Devin calls
     issue-status       post or refresh one job's status comment on its triggering GitHub issue
+    pr-status          post or refresh the same status card as a comment on the job's candidate PR
 
 ELI5: these commands let an operator run the safe demo, prove baselines, prepare
 the provider context, or inspect the gates before live work is allowed.
@@ -14,6 +15,7 @@ the provider context, or inspect the gates before live work is allowed.
 import argparse  # ELI5: turn command-line words into typed options.
 import fcntl  # ELI5: share the worker lock so a manual retry cannot race the worker.
 import json  # ELI5: print machine-readable command results.
+import re  # ELI5: pull the PR number out of a job's saved candidate PR URL.
 import shutil  # ELI5: remove only the simulation folder when asked.
 
 from app.cases import Registry  # ELI5: load the approved remediation cases.
@@ -21,7 +23,7 @@ from app.config import Settings  # ELI5: load environment-backed live settings.
 from app.devin import Devin, launch_preflight  # ELI5: share the local launch gate without calling Devin.
 from app.db import Store  # ELI5: read and update the one saved failed job.
 from app.github import GitHub  # ELI5: read the candidate PR head before and after local checks.
-from app.issue_status import latest_comment_id, render_card  # ELI5: render and reuse the one issue status comment.
+from app.issue_status import latest_comment_id, marker, render_card  # ELI5: render and reuse the one status comment.
 from app.simulation import run_demo, simulation_settings  # ELI5: run the safe local demo.
 from app.validator import Validator  # ELI5: prove a case is weak or validate its candidate.
 
@@ -61,15 +63,41 @@ def issue_status_command(settings: Settings, job_id: str) -> dict:
     """Render one job's status card and post/edit it once on its triggering GitHub issue.
 
     Used to backfill the comment for a job that finished before this feature existed,
-    or to manually refresh it. Reuses the same saved comment id the worker would reuse.
+    or to manually refresh it. Reuses the same saved comment id the worker would reuse,
+    so a re-run always edits the existing comment in place instead of posting a duplicate.
     """
     store = Store(settings)  # ELI5: use the existing job and event ledger; never enqueue new work.
     job = store.get(job_id)  # ELI5: find the exact job the operator named.
+    registry = Registry(settings)  # ELI5: describe the case and its allowed files from trusted config.
     github = GitHub(settings)  # ELI5: post through the same adapter the worker uses.
     comment_id = latest_comment_id(store, job_id)  # ELI5: edit the existing comment when one was already posted.
-    new_id = github.upsert_issue_comment(job.issue_number, render_card(job), comment_id)
+    new_id = github.upsert_issue_comment(job.issue_number, render_card(job, store, registry), comment_id)
     store.change(job_id, "ISSUE_STATUS_COMMENTED", details={"comment_id": new_id, "status": job.status})
     return {"job_id": job.id, "issue_number": job.issue_number, "comment_id": new_id, "status": job.status}
+
+
+def pr_status_command(settings: Settings, job_id: str) -> dict:
+    """Render one job's status card and post/edit it once on its candidate PR.
+
+    Idempotent by searching the PR's own comments for our hidden marker, since the PR
+    comment is not the same saved comment tracked by the issue-status event.
+    """
+    store = Store(settings)  # ELI5: use the existing job and event ledger; never enqueue new work.
+    job = store.get(job_id)  # ELI5: find the exact job the operator named.
+    if not job.candidate_pr_url:
+        # ELI5: there is nothing to comment on until Devin's PR has been observed.
+        raise ValueError("Job has no candidate PR")
+    match = re.search(r"/pull/(\d+)$", job.candidate_pr_url)
+    if not match:
+        # ELI5: refuse to guess a PR number out of a malformed saved URL.
+        raise ValueError("Could not parse a PR number from the saved candidate PR URL")
+    pr_number = int(match.group(1))
+    registry = Registry(settings)  # ELI5: describe the case and its allowed files from trusted config.
+    github = GitHub(settings)  # ELI5: post through the same adapter the worker uses.
+    body = render_card(job, store, registry, header="### DevinTrace verification")
+    comment_id = github.find_comment_by_marker(pr_number, marker(job.id))
+    new_id = github.upsert_issue_comment(pr_number, body, comment_id)
+    return {"job_id": job.id, "pr_number": pr_number, "comment_id": new_id, "status": job.status}
 
 
 # ELI5: this entry point chooses one bounded operator command and reports its result.
@@ -84,7 +112,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     # ELI5: allow only the four commands implemented below.
     parser.add_argument(
-        "command", choices=["demo", "doctor", "bootstrap-context", "baseline", "revalidate", "issue-status"]
+        "command", choices=["demo", "doctor", "bootstrap-context", "baseline", "revalidate", "issue-status", "pr-status"]
     )
     # ELI5: let a demo operator request a fresh simulation folder.
     parser.add_argument("--reset", action="store_true")
@@ -136,6 +164,12 @@ def main() -> None:
         if not args.job_id:
             raise SystemExit("issue-status requires --job-id")
         print(json.dumps(issue_status_command(settings, args.job_id), indent=2))
+        return
+    # ELI5: backfill or refresh the same status card as a comment on the job's candidate PR.
+    if args.command == "pr-status":
+        if not args.job_id:
+            raise SystemExit("pr-status requires --job-id")
+        print(json.dumps(pr_status_command(settings, args.job_id), indent=2))
         return
     # ELI5: baseline proves every registered case is weak before remediation is attempted.
     if args.command == "baseline":

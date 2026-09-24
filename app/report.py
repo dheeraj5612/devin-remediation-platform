@@ -333,6 +333,11 @@ def _job_record(mode: str, job: Job, events: list[Event], case: Case | None = No
         "pr_created_at": _iso(job.pr_created_at),
         # ELI5: normalize terminal time for export consumers.
         "completed_at": _iso(job.completed_at),
+        # ELI5: same label-to-verified elapsed time the leader strip's throughput row shows.
+        "label_to_verified": human_duration(
+            (job.completed_at - job.created_at).total_seconds()
+            if job.status == "VERIFIED" and job.completed_at is not None and job.created_at is not None else None
+        ),
         # ELI5: count persisted events without inventing missing timeline rows.
         "event_count": len(events),
         # ELI5: export the same sanitized events that the selected timeline renders.

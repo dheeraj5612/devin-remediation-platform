@@ -117,3 +117,38 @@ def test_upsert_issue_comment_rejects_non_positive_ids(settings, issue_number, c
         transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"id": 1}))))
     with pytest.raises(ValueError):
         github.upsert_issue_comment(issue_number, "body", comment_id)
+
+
+def test_find_comment_by_marker_returns_the_matching_id(settings):
+    """The marker search returns the id of the one comment whose body contains it, none otherwise."""
+    comments = [{"id": 1, "body": "unrelated"}, {"id": 2, "body": "hello <!-- devintrace-status job=abc --> world"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=comments)
+
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(handler)))
+    assert github.find_comment_by_marker(9, "<!-- devintrace-status job=abc -->") == 2
+    assert github.find_comment_by_marker(9, "<!-- devintrace-status job=zzz -->") is None
+
+
+def test_find_comment_by_marker_paginates_until_a_short_page(settings):
+    """A full first page is followed by a second, shorter page that ends the search."""
+    pages = {1: [{"id": n, "body": "x"} for n in range(100)],
+             2: [{"id": 999, "body": "<!-- devintrace-status job=abc -->"}]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=pages[page])
+
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(handler)))
+    assert github.find_comment_by_marker(9, "<!-- devintrace-status job=abc -->") == 999
+
+
+def test_find_comment_by_marker_rejects_non_positive_number(settings):
+    """Reject a non-positive PR/issue number before it reaches the request path."""
+    github = GitHub(settings, httpx.Client(base_url=f"https://api.github.com/repos/{settings.github_repository}/",
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json=[]))))
+    with pytest.raises(ValueError):
+        github.find_comment_by_marker(0, "marker")

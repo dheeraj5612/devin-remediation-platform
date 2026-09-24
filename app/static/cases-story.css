@@ -1,0 +1,23 @@
+/* Cases page narrative: audience-facing cues, paraphrased from the Loom script.
+   ELI5: short headline + a few short bullets per block, not a wall of prose. */
+.story-block { border-top: 1px solid var(--line); padding-block: 28px 32px; }
+.story-block h2 { font-size: 22px; }
+.story-block .eyebrow { color: var(--muted); margin-bottom: 8px; }
+.story-bullets { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 9px; max-width: 640px; }
+.story-bullets li { font-size: 14px; line-height: 1.4; padding-left: 16px; position: relative; }
+.story-bullets li::before { content: ""; position: absolute; left: 0; top: 8px; width: 6px; height: 6px; background: var(--blue); }
+
+.story-legend { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.story-legend li { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: baseline; }
+.story-legend code { font-weight: 600; }
+.story-legend .story-pass { color: var(--green); }
+.story-legend .story-bad { color: var(--red); }
+.story-legend .story-warn { color: var(--amber); }
+.story-legend p { color: var(--muted); font-size: 13px; margin: 0; }
+
+.story-recovery { margin-top: 20px; padding: 16px 20px; background: var(--green-wash); border-left: 2px solid var(--green); max-width: 640px; }
+.story-recovery p { font-size: 13px; margin: 0; }
+
+@media (max-width: 720px) {
+  .story-legend li { grid-template-columns: 1fr; gap: 4px; }
+}

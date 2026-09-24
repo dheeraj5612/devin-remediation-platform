@@ -1,12 +1,54 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import mode_banner %}
 {% block content %}
+<link rel="stylesheet" href="/static/cases-story.css?v=1">
 <div class="wrap workspace">
   <div class="page-top"><div><p class="eyebrow">Before the run</p><h1>Bounded by a contract.</h1><p class="detail-subtitle">Approved scope. Explicit acceptance. Independent check.</p></div><a class="button primary" href="/dashboard">Open workbench ↗</a></div>
   {{ mode_banner(report) }}
+  <section class="story-block" aria-labelledby="story-registry-title"><p class="eyebrow">One source of truth</p><h2 id="story-registry-title">One registry drives every case</h2>
+    <ul class="story-bullets">
+      <li>Each case pins a baseline commit, allowed files, and its oracle</li>
+      <li>New case = one YAML entry + one oracle</li>
+      <li>Issue bound to a registered case; unbound issues are refused</li>
+    </ul>
+  </section>
+  <section class="story-block" aria-labelledby="story-trust-title"><p class="eyebrow">Independent proof</p><h2 id="story-trust-title">Why trust the green check</h2>
+    <ul class="story-bullets">
+      <li>Devin's "done" is not the signal</li>
+      <li>Oracle lives outside Devin's checkout</li>
+      <li>Runs on the PR's exact commit</li>
+      <li>Candidate SHA must match validated SHA</li>
+    </ul>
+    <ul class="story-legend">
+      <li><code class="story-pass">PASS</code><p>Fix caught the bug</p></li>
+      <li><code class="story-bad">REGRESSION</code><p>Bug still present</p></li>
+      <li><code class="story-bad">CONTRACT_FAILED</code><p>Partial fix, some bad inputs still crash</p></li>
+      <li><code class="story-warn">INFRA_ERROR</code><p>Evaluator broke, never counted as a pass</p></li>
+    </ul>
+  </section>
   <section aria-labelledby="cases-title"><div class="section-heading"><h2 id="cases-title">Cases</h2><span class="micro">{{ portfolio|length }} registered</span></div>
     {% for case in portfolio %}<article class="contract-row" id="case-{{ case.id }}"><span class="contract-number">{{ '%02d'|format(loop.index) }}</span><div class="contract-content"><p class="eyebrow">{{ 'Application contract' if case.case_kind == 'application' else 'Test repair' }}</p><h3>{{ case.title }}</h3><p>{{ case.contract }}</p><details id="contract-{{ case.id }}"><summary>Scope &amp; acceptance <span aria-hidden="true">+</span></summary><p>{{ case.acceptance }}</p><p class="eyebrow">Allowed paths</p><ul class="path-list">{% for path in case.allowed_paths %}<li><code>{{ path }}</code></li>{% endfor %}</ul>{% if case.acceptance_test %}<p class="eyebrow">Trusted harness</p><code>{{ case.acceptance_test }}</code>{% endif %}</details></div><div class="contract-state"><span class="eyebrow">Baseline</span><strong>{{ case.baseline.outcome|replace('_',' ')|title }}</strong><p class="micro">{{ case.baseline.statement }}</p>{% if case.latest_job_id %}<a class="text-link" href="/jobs/{{ case.latest_job_id }}">Inspect latest run ↗</a>{% else %}<span class="micro">No candidate recorded</span>{% endif %}</div></article>{% endfor %}
   </section>
+  {% set ns = namespace(recovered_issue=none) %}
+  {% for job in report.jobs %}{% for event in job.events %}{% if event.type == 'INFRA_REVALIDATED' and ns.recovered_issue is none %}{% set ns.recovered_issue = job.issue_number %}{% endif %}{% endfor %}{% endfor %}
+  <section class="story-block" aria-labelledby="story-gates-title"><p class="eyebrow">Before it runs</p><h2 id="story-gates-title">Gates before any paid run</h2>
+    <ul class="story-bullets">
+      <li><code>make baseline</code> must reproduce the bug first</li>
+      <li>Test repair: old test misses injected regression</li>
+      <li>Devin's new test must catch it</li>
+    </ul>
+    {% if ns.recovered_issue is not none %}
+    <div class="story-recovery"><p class="eyebrow">Recovered without a new session</p><p>Issue #{{ ns.recovered_issue }} re-validated at the same commit</p></div>
+    {% endif %}
+  </section>
   <section class="readiness" id="readiness" aria-labelledby="readiness-title"><div><p class="eyebrow">Before live execution</p><h2 id="readiness-title">{{ readiness.label }}</h2><p>{{ readiness.message }}</p><p class="micro">This interface cannot enable live work or enqueue paid work.</p><div class="command"><code id="doctor-command">make doctor</code><button class="copy-button js-only" type="button" data-copy="doctor-command">Copy</button></div></div><div><ul class="gate-list">{% for check in readiness.checks %}<li><div><strong>{{ check.label }}</strong><p>{{ check.detail }}</p></div><span class="status {{ 'good' if check.state == 'PASS' else 'bad' if check.state == 'BLOCKED' else 'pending' }}">{{ check.state|replace('_',' ')|title }}</span></li>{% endfor %}</ul>{% if readiness.problems %}<details id="readiness-problems"><summary>Blockers ({{ readiness.problems|length }})</summary><ul>{% for problem in readiness.problems %}<li>{{ problem }}</li>{% endfor %}</ul></details>{% endif %}</div></section>
+  <section class="story-block" aria-labelledby="story-when-title"><p class="eyebrow">Scope</p><h2 id="story-when-title">When to use DevinTrace</h2>
+    <ul class="story-bullets">
+      <li>Defects statable as a contract with an oracle</li>
+      <li>Weak tests, crash-on-bad-input bugs, scanner findings</li>
+      <li>Never auto-merges; not for vague feature work</li>
+      <li>Production needs: isolated runners, auth, a real queue</li>
+    </ul>
+  </section>
 </div>
 {% endblock %}

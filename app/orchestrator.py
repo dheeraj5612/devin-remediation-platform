@@ -195,7 +195,7 @@ class Orchestrator:
             if self._issue_fields(job) == before:
                 return
             comment_id = latest_comment_id(self.store, job_id)
-            new_id = upsert(job.issue_number, render_card(job), comment_id)
+            new_id = upsert(job.issue_number, render_card(job, self.store, self.registry), comment_id)
             # ELI5: remember the comment id as an event, since the job row itself is not being extended.
             self.store.change(job_id, "ISSUE_STATUS_COMMENTED", details={"comment_id": new_id, "status": job.status})
         except Exception as exc:  # Best-effort GitHub side effect must never break a step.

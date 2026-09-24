@@ -110,6 +110,32 @@ class GitHub:
             # ELI5: hide provider response details and fail closed on a shape mismatch.
             raise RemoteError("Invalid comment response") from exc
 
+    def find_comment_by_marker(self, number: int, marker: str) -> int | None:
+        """Search this issue or PR's comments for one whose body contains `marker`; else None.
+
+        PR comments use the same "issues" comments endpoint as issue comments.
+        """
+        # ELI5: validate the number before placing it in the API path.
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+            raise ValueError("Issue or PR number must be a positive integer")
+        # ELI5: cap pages so a broken API cannot loop forever while searching for our marker.
+        for page in range(1, 21):
+            data = request(self.client, "GET", f"issues/{number}/comments", params={"per_page": 100, "page": page})
+            if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+                # ELI5: refuse to search an unexpected provider shape.
+                raise RemoteError("Invalid comments response")
+            for item in data:
+                body, comment_id = item.get("body"), item.get("id")
+                if (isinstance(body, str) and marker in body and isinstance(comment_id, int)
+                        and not isinstance(comment_id, bool) and comment_id > 0):
+                    # ELI5: return the first (oldest) comment carrying our marker.
+                    return comment_id
+            # ELI5: a short page means there is no next page to fetch.
+            if len(data) < 100:
+                return None
+        # ELI5: stop after the hard page cap and require manual reconciliation.
+        raise RemoteError("Pagination limit reached; manual reconciliation required")
+
     def discover(self, state: SessionState, target_branch: str | None = None) -> Candidate | None:
         """Pick one reported PR in our repo and enforce the optional case-specific base branch."""
         # ELI5: build a strict URL pattern for this configured repository only.

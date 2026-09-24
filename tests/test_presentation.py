@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
+from app.db import Store
 from app.main import create_app
 from app.presentation import human_time, linked_verdict, recorded_evidence, workbench
 from app.simulation import run_demo, simulation_settings
@@ -148,6 +149,37 @@ def test_case_specific_checks_and_synthetic_artifacts(populated):
     assert "data-secondary" in app_html and "Show all" in app_html
 
 
+def test_job_page_oracle_method_cues_and_infra_revalidated(populated, live):
+    """Show the right oracle-method cues per case kind, plus the recovery cue when it happened."""
+
+    # ELI5: application and test-quality proof pages explain their own oracle method, not the other one's.
+    client, report = populated
+    application = next(job for job in report["jobs"] if job["case_kind"] == "application")
+    test_repair = next(job for job in report["jobs"] if job["case_kind"] == "test_quality")
+    app_html = client.get(f"/jobs/{application['id']}").text
+    test_html = client.get(f"/jobs/{test_repair['id']}").text
+    assert "Controls first: valid inputs must still pass." in app_html
+    assert "Some crash = CONTRACT_FAILED; partial fix rejected." in app_html
+    assert "Known regression injected into the code." not in app_html
+    assert "Old test missed it; new test must catch it." in test_html
+    assert "Controls first: valid inputs must still pass." not in test_html
+
+    store = Store(live)
+    job, duplicate = store.enqueue("delivery-infra", live.github_repository, 101, "histogram-invalid-column")
+    assert not duplicate
+    store.change(job.id, "FAILED", status="FAILED", validation_status="INFRA_ERROR",
+                 candidate_sha="a" * 40, candidate_pr_number=10, devin_session_id="session-original")
+    store.record_infra_revalidation(job.id, "a" * 40,
+                                     {"outcome": "VERIFIED", "summary": "Independent checks passed",
+                                      "evidence": {"sha": "a" * 40}})
+    store.engine.dispose()
+    with TestClient(create_app(live)) as live_client:
+        live_report = live_client.get("/report.json").json()
+        revalidated_job = next(j for j in live_report["jobs"] if j["issue_number"] == 101)
+        html = live_client.get(f"/jobs/{revalidated_job['id']}").text
+    assert "Evaluator broke once (INFRA_ERROR, never a pass); re-checked the same commit, no new Devin session." in html
+
+
 def test_provider_activity_is_mode_labeled_and_bootstrap_stays_unrecorded(populated):
     """Show persisted fake operation records while keeping absent bootstrap proof explicit."""
 
@@ -172,7 +204,11 @@ def test_provider_activity_is_mode_labeled_and_bootstrap_stays_unrecorded(popula
     job = report["jobs"][0]
     detail = client.get(f"/jobs/{job['id']}").text
     assert "Devin API activity" in detail
-    assert "Current mode context" in detail
+    assert "Once per repository" in detail
+    assert "Sessions API · poll" in detail
+    assert "Not needed in this run." in detail
+    dashboard_zero = client.get("/dashboard").text
+    assert "Sessions API · list by tag" in dashboard_zero
 
 
 def test_provider_activity_absence_is_not_recorded(client):
@@ -185,7 +221,40 @@ def test_provider_activity_absence_is_not_recorded(client):
     assert provider["event_count"] == 0
     assert provider["bootstrap"]["status"] == "NOT_RECORDED"
     assert provider["bootstrap"]["timestamp"] == "NOT_RECORDED"
-    assert "NOT_RECORDED" in client.get("/dashboard").text
+    dashboard = client.get("/dashboard").text
+    assert "Not Recorded" in dashboard
+    assert "Not needed in live runs." in dashboard
+
+
+def test_dashboard_thesis_breakdown_and_when_to_use(populated):
+    """The dashboard shows the opening thesis, a computed live breakdown, and a when-to-use block."""
+
+    # ELI5: every number in the new cues must trace back to the same report, never a hardcoded count.
+    client, report = populated
+    dashboard = client.get("/dashboard").text
+    assert "Devin writes the fix. An independent oracle proves it. A human merges." in dashboard
+    verified = [job for job in report["jobs"] if linked_verdict(job) == "VERIFIED"]
+    test_quality = sum(job["case_kind"] == "test_quality" for job in verified)
+    application = sum(job["case_kind"] == "application" for job in verified)
+    assert f"{test_quality} test repair" in dashboard
+    assert f"{application} app contract" in dashboard
+    metrics = report["metrics"]
+    assert f"{metrics['first_pass']} of {metrics['first_pass_denominator']} verified on first pass" in dashboard
+    assert "When to use it" in dashboard
+    assert "Not for: vague feature work." in dashboard
+    assert "Never auto-merges; human reviews every PR." in dashboard
+
+
+def test_devin_api_card_shows_acu_cap_and_failure_total(populated):
+    """The Devin API card quotes the real configured ACU cap and a plain failures total."""
+
+    # ELI5: the cap must come from settings, not a hardcoded string, and failures must be visible.
+    client, report = populated
+    dashboard = client.get("/dashboard").text
+    assert "Starts one session capped at 3 ACUs, referencing playbook, note, attachment." in dashboard
+    assert "never edit the checker, never merge" in dashboard
+    provider = report["provider_api"]
+    assert f"{provider['event_count']} Devin API calls, {provider['event_count'] - provider['success_count']} failures" in dashboard
 
 
 def test_metadata_and_error_recovery(populated):

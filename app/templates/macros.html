@@ -12,11 +12,11 @@
 {% macro sha(value, label, id) -%}
 <div class="sha-field"><span class="eyebrow">{{ label }}</span><div><code id="{{ id }}">{{ value or 'Not recorded' }}</code>{% if value %}<button class="copy-button js-only" type="button" data-copy="{{ id }}" aria-label="Copy {{ label|lower }}">Copy</button>{% endif %}</div></div>
 {%- endmacro %}
-{# ELI5: this card shows persisted provider operation records without provider payload text. #}
+{# ELI5: this card names all four Devin APIs and why each is called, not just raw counts. #}
 {% macro provider_api_card(card, compact=false) -%}
 <section class="provider-api-card {{ 'provider-api-card-compact' if compact else '' }}" aria-labelledby="provider-api-heading{{ '-compact' if compact else '' }}">
   <div class="provider-api-heading">
-    <div><p class="eyebrow">{{ card.mode }} / persisted trace</p><h2 id="provider-api-heading{{ '-compact' if compact else '' }}">Devin API activity</h2><p class="micro">Operation records from the selected evidence store.</p></div>
+    <div><p class="eyebrow">{{ card.mode }} / persisted trace</p><h2 id="provider-api-heading{{ '-compact' if compact else '' }}">Devin API activity</h2><p class="micro">Four Devin APIs. Playbooks and Knowledge are set up once per repository; Attachments and Sessions run per job.</p></div>
     <span class="provider-api-status {{ 'is-recorded' if card.status == 'RECORDED' else 'is-missing' }}">{{ card.status|replace('_', ' ')|title }}</span>
   </div>
   {% if card.event_count %}
@@ -25,15 +25,20 @@
     <div><strong>{{ card.success_count }}</strong><span>successful</span></div>
     <div><strong>{% if card.latency_ms.median is not none %}{{ card.latency_ms.median }} ms{% else %}NOT_RECORDED{% endif %}</strong><span>{{ card.timing_label }}</span></div>
   </div>
-  <ul class="provider-api-operations" aria-label="Provider operation records">
-    {% for row in card.operation_rows if row.event_count %}<li><span>{{ row.label }}</span><span class="provider-api-count">{{ row.success_count }}/{{ row.event_count }} succeeded</span><span class="provider-api-latency">{% if row.latency_ms.median is not none %}{{ row.latency_ms.median }} ms median{% else %}NOT_RECORDED{% endif %}</span></li>{% endfor %}
-  </ul>
-  {% else %}
-  <p class="provider-api-empty"><strong>NOT_RECORDED</strong> No Devin operation records are persisted for this mode.</p>
+  <p class="micro">{{ card.event_count }} Devin API calls, {{ card.failure_count }} failures</p>
   {% endif %}
-  <div class="provider-bootstrap" aria-label="{{ 'Current mode context' if compact else 'Bootstrap resource evidence' }}">
-    <div><span class="eyebrow">{{ 'Current mode context' if compact else 'Bootstrap resources' }}</span><span class="provider-bootstrap-status">{{ card.bootstrap.status|replace('_', ' ')|title }}</span>{% if compact %}<span class="micro">Shared setup metadata, not job provenance.</span>{% endif %}</div>
-    <dl><div><dt>Playbook</dt><dd>{{ card.bootstrap.playbook.status|replace('_', ' ')|title }}{% if card.bootstrap.playbook.action != 'NOT_RECORDED' %} · {{ card.bootstrap.playbook.action }}{% endif %}</dd></div><div><dt>Knowledge</dt><dd>{{ card.bootstrap.knowledge.status|replace('_', ' ')|title }}{% if card.bootstrap.knowledge.action != 'NOT_RECORDED' %} · {{ card.bootstrap.knowledge.action }}{% endif %}</dd></div><div><dt>Recorded</dt><dd>{% if card.bootstrap.timestamp == 'NOT_RECORDED' %}NOT_RECORDED{% else %}{{ card.bootstrap.timestamp|clock }}{% endif %}</dd></div></dl>
+  <div class="provider-api-group" aria-label="Per run">
+    <p class="eyebrow provider-api-group-label">Per run</p>
+    <ul class="provider-api-operations" aria-label="Per-run Devin operation records">
+      {% for row in card.operation_rows %}<li><span>{{ row.label }}</span><span class="provider-api-count">{% if row.event_count %}{{ row.success_count }}/{{ row.event_count }} succeeded{% if row.latency_ms.median is not none %} · {{ row.latency_ms.median }} ms median{% endif %}{% else %}{{ 'Not needed in live runs.' if not compact else 'Not needed in this run.' }}{% endif %}</span><span class="provider-api-description">{{ row.cue }}</span></li>{% endfor %}
+    </ul>
+  </div>
+  <div class="provider-bootstrap" aria-label="Once per repository">
+    <div><span class="eyebrow">Once per repository</span><span class="provider-bootstrap-status">{{ card.bootstrap.status|replace('_', ' ')|title }}</span></div>
+    <ul class="provider-api-operations">
+      {% for row in card.bootstrap.rows %}<li><span>{{ row.label }}</span><span class="provider-api-count">{{ row.status|replace('_', ' ')|title }}{% if row.action != 'NOT_RECORDED' %} · {{ row.action }}{% endif %}</span><span class="provider-api-description">{{ row.cue }}</span></li>{% endfor %}
+    </ul>
+    <p class="micro">Named by content hash; edited copies refused. Recorded {% if card.bootstrap.timestamp == 'NOT_RECORDED' %}Not recorded{% else %}{{ card.bootstrap.timestamp|clock }}{% endif %}.</p>
   </div>
 </section>
 {%- endmacro %}
