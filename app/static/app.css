@@ -132,6 +132,16 @@ img { display: block; max-width: 100%; }
 .fit-row strong { color: var(--ink); }
 .fit-devin { background: var(--blue-wash); border-left: 4px solid var(--blue); }
 .landing-fit .micro { margin-top: 12px; }
+/* Presenter aids: a numbered tour on the landing page and plain talk lines on each stop. */
+.landing-tour { padding-block: 40px 8px; }
+.landing-tour > h2 { margin-top: 12px; font-size: 28px; line-height: 1.15; letter-spacing: -.03em; }
+.tour-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0; margin: 20px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.tour-list li { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--white); }
+.tour-list a { display: grid; gap: 4px; height: 100%; padding: 14px 16px; text-decoration: none; }
+.tour-list a:hover, .tour-list a:focus-visible { background: var(--blue-wash); }
+.tour-list .mono { color: var(--blue); font-size: 12px; }
+.tour-list small { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.talk-lead { max-width: 78ch; margin: 12px 0 16px; padding: 10px 14px; border-left: 3px solid var(--blue); background: var(--blue-wash); color: var(--ink); font-size: 16px; line-height: 1.5; }
 .arch-list { margin: 22px 0 0; padding-left: 22px; display: grid; gap: 12px; }
 .arch-list li { color: var(--muted); font-size: 14px; line-height: 1.55; }
 .arch-list strong { color: var(--ink); }

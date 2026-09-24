@@ -11,6 +11,9 @@ One-line thesis to open and close on:
 
 ## Pre-recording checklist
 
+No script needed on camera: the landing page's **five-minute tour** lists the
+seven stops in order, and each stop has a blue talk line to speak from.
+
 1. Stack runs in containers: `docker compose -f docker-compose.yml -f docker-compose.live.yml --profile live up -d`.
    `curl -s http://127.0.0.1:8010/healthz` says `LIVE`. Everything shown is persisted evidence.
 2. Tabs, left to right:
@@ -105,7 +108,7 @@ Tab 3, **Proof**.
 > touch, which checker proves it. We confirm every bug reproduces before
 > spending a cent, and a broken checker never counts as a pass.
 
-**3:40 to 4:20 | Why Devin.** Tab 0, **Why Devin is the right tool here**.
+**3:40 to 4:20 | Why Devin.** Tab 0, **03 / Why Devin: the alternatives** table.
 
 > Why Devin? Without an autonomous agent this isn't practical: every bug
 > needs either an engineer at the keyboard or custom code written for it.

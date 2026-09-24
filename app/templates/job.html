@@ -12,6 +12,7 @@
   </section>
   <section class="run-story" aria-labelledby="story-heading">
     <div class="section-heading"><div><p class="eyebrow">How it happened</p><h2 id="story-heading">How this run worked.</h2></div><span class="micro">Label → verified: {{ selected_story.label_to_verified }}</span></div>
+    {% if not report.truth.simulation %}<p class="talk-lead">One label started this. GitHub sent us a signed message; we checked it came from our repo and that issue #{{ selected_story.issue_number or 'Not recorded' }} is on the approved list, then saved one job that survives a restart. From there Devin did the work through the API. Nobody was driving; the app only checked in.</p>{% endif %}
     <ol class="story-steps">
       <li><span class="story-index mono">01</span><p>Engineer labeled issue #{{ selected_story.issue_number or 'Not recorded' }} <code>devin-remediate</code>.{% if not report.truth.simulation and selected_story.issue_url %} <a href="{{ selected_story.issue_url }}">Issue ↗</a>{% endif %}</p></li>
       <li><span class="story-index mono">02</span><p>Signed webhook verified and bound to registered case <code>{{ selected_story.case_id }}</code>; one durable job saved.</p></li>
@@ -29,6 +30,7 @@
   {{ provider_api_card(selected_provider_api, true) }}
   <section class="proof-sheet" aria-labelledby="proof-heading">
     <div class="section-heading"><div><p class="eyebrow">01 / Proof</p><h2 id="proof-heading">One contract. Before and after.</h2></div><span class="mono">{{ 'APPLICATION' if selected_job.case_kind == 'application' else 'TEST + MUTANT' }}</span></div>
+    {% if sha_verified and not report.truth.simulation %}<p class="talk-lead">The checker fetched the exact commit Devin pushed and tested it on its own, outside Devin's reach. Before: {{ (selected_case.baseline.application_status if selected_job.case_kind == 'application' else selected_case.baseline.mutant) or 'Not recorded' }}. After: {{ selected_story.after }}. Same commit Devin pushed, same one we tested. Label to proof: {{ selected_story.label_to_verified }}.</p>{% endif %}
     <div class="comparison-table"><table><caption class="sr-only">Baseline and candidate evaluation results</caption><thead><tr><th scope="col">Independent check</th><th scope="col">Before <span>Current case baseline</span></th><th scope="col">After <span>Candidate</span></th></tr></thead><tbody>
     {% if selected_job.case_kind == 'application' %}
     <tr><th scope="row">Application contract<span>{{ selected_job|job_title }}</span></th><td>{{ selected_case.baseline.application_status or 'Not recorded' }}</td><td class="{{ 'check-pass' if selected_job.validation.application_status == 'PASS' else 'check-fail' if selected_job.validation.application_status == 'REGRESSION' else '' }}">{{ selected_job.validation.application_status or 'Not recorded' }}<span>Application: {{ selected_job.validation.application_status or 'Not recorded' }}</span></td></tr>

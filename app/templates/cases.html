@@ -6,6 +6,7 @@
   <div class="page-top"><div><p class="eyebrow">Before the run</p><h1>Bounded by a contract.</h1><p class="detail-subtitle">Approved scope. Explicit acceptance. Independent check.</p></div><a class="button primary" href="/dashboard">Open workbench ↗</a></div>
   {{ mode_banner(report) }}
   <section class="story-block" aria-labelledby="story-registry-title"><p class="eyebrow">One source of truth</p><h2 id="story-registry-title">One registry drives every case</h2>
+    <p class="talk-lead">Everything comes from one list of approved bugs, <code>evals/cases.yaml</code>: where each bug lives, which files Devin may touch, and which checker proves the fix. It is the allow-list, not a log.</p>
     <ul class="story-bullets">
       <li>Each case pins a baseline commit, allowed files, and its oracle</li>
       <li>New case = one YAML entry + one oracle</li>
@@ -13,6 +14,7 @@
     </ul>
   </section>
   <section class="story-block" aria-labelledby="story-trust-title"><p class="eyebrow">Independent proof</p><h2 id="story-trust-title">Why trust the green check</h2>
+    <p class="talk-lead">Devin can't grade its own homework. Good inputs must still work and every bad input must be rejected, so a partial fix fails. We confirm each bug reproduces before spending anything, and a broken checker never counts as a pass.</p>
     <ul class="story-bullets">
       <li>Devin's "done" is not the signal</li>
       <li>Oracle lives outside Devin's checkout</li>

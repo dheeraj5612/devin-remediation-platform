@@ -18,6 +18,7 @@
     <p class="micro">{{ desk.verified_test_quality }} test repair{{ '' if desk.verified_test_quality == 1 else 's' }} (weak tests that let regressions through) · {{ desk.verified_application }} app contract{{ '' if desk.verified_application == 1 else 's' }} (crash on bad input){% if metrics.first_pass_denominator %} · {{ metrics.first_pass }} of {{ metrics.first_pass_denominator }} verified on first pass{% endif %}</p>
   </section>
   {# ELI5: the leader strip answers "is this working" first, before the full ledger below. #}
+  <p class="talk-lead">The manager's view: count proven fixes, not PRs opened. How long from label to proof, how often Devin gets it right the first time, and how much human time each fix costs: one label and one review.</p>
   <section class="leader-strip metric-strip" aria-label="Is it working: leadership summary">
     <div><span class="eyebrow">Verified fixes</span><strong>{{ metrics.leader.verified_count }}<span>/{{ metrics.leader.terminal_count }}</span></strong><span class="micro">Verification rate: {{ metrics.leader.verification_rate_label }} terminal runs</span><span class="metric-def">Verified over finished, not PRs opened.</span></div>
     <div><span class="eyebrow">Label → verified</span><strong>{{ metrics.leader.median_label_to_verified }}</strong><span class="micro">Median time to independent verification</span><span class="metric-def">Time from label to independent proof.</span></div>

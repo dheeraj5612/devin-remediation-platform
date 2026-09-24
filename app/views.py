@@ -55,8 +55,11 @@ def install_views(app: FastAPI, settings: Settings, store: Store, registry: Regi
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> Response:
         """Explain the workflow using explicitly archived, checked-in evidence."""
+        # ELI5: the tour links the newest verified run so the presenter can click straight to it.
+        verified = [job for job in build_report(settings, store, registry)["jobs"] if job["status"] == "VERIFIED"]
+        tour_job = max(verified, key=lambda job: job.get("created_at") or "", default=None)
         return page(request, "landing.html", "Independent proof for autonomous repair", "overview",
-                    {"archive": recorded_evidence()})
+                    {"archive": recorded_evidence(), "tour_job": tour_job})
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard(request: Request) -> Response:
