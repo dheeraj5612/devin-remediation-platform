@@ -6,8 +6,8 @@ Hard stop at 5:00. Record the **LIVE** app at `http://127.0.0.1:8010`. Keep
 
 One-line thesis to open and close on:
 
-> Devin writes the fix. An independent oracle, which Devin cannot edit, proves
-> the fix catches the bug. A human only labels the issue and reviews the PR.
+> Devin writes the fix. A separate checker Devin can't touch proves it works.
+> A human only adds a label and reviews the PR.
 
 ## Pre-recording checklist
 
@@ -33,84 +33,87 @@ One-line thesis to open and close on:
 
 **0:00 to 0:45 | What.** Dashboard, leader strip.
 
-> This is DevinTrace. It turns an approved GitHub issue on our Superset fork
-> into a Devin pull request, then independently proves the fix before a human
-> looks at it. Four live runs, four verified on the first pass: three weak
-> tests that let real regressions through, and one API crash that returned a
-> 500. The strip at the top is the leader view: verified out of finished,
-> time from label to proof, first-pass rate, and what needs a human now.
+> This is DevinTrace. You give it a bug report. Devin writes the fix. Then a
+> separate checker, one Devin can't touch, proves the fix really works before
+> any human spends time on it. We ran it four times for real on our Superset
+> fork. Four fixes, all proven on the first try: three tests that were too
+> weak to catch real bugs, and one API that crashed on bad input. The strip
+> at the top is the manager's view: how many fixes were proven, how fast,
+> and what still needs a person.
 
 **0:45 to 2:15 | How, live.** Start on tab 2 (issue #13).
 
-> An engineer adds one label, `devin-remediate`. GitHub sends a signed webhook;
-> the app checks the signature, the repository, and that this issue is bound
-> to a registered case, then saves one durable job.
+> It starts with one label. An engineer tags the issue `devin-remediate`.
+> GitHub sends us a signed message. We check it really came from GitHub, from
+> our repo, and that this issue is one we've approved. Then we save one job
+> that survives a restart.
 
 Tab 5, job page: walk **How this run worked** (steps 01 to 06), then the
 **Devin API activity** card: **Per run** rows, then **Once per repository**.
 
-> Four Devin APIs, not just sessions. Once per repo, a **Playbook** says how
-> Devin works: reproduce first, smallest fix, allowed files only, never touch
-> the checker, never merge. A **Knowledge** note, generated from our case
-> registry, gives the branch, baseline, and allowed files. Both are named by a
-> hash of their content, so an edited copy is refused. Per job, **Attachments**
-> uploads the baseline proof, and **Sessions** starts one session capped at 3
-> ACUs that references all three, then polls it: 41 API calls, zero failures.
-> Sessions also handle crash recovery by job tag and one in-session
-> correction message.
+> We use four Devin APIs, not just one. Think of it like onboarding a new
+> engineer. The **Playbook** is the team handbook: reproduce the bug first,
+> make the smallest fix, only touch allowed files, never touch the checker,
+> never merge. The **Knowledge** note is the project brief: which branch,
+> which files, what "broken" looks like. We set both up once, and fingerprint
+> them, so a changed copy gets rejected. Then for each bug, **Attachments**
+> hands Devin the evidence, and **Sessions** starts the work with a budget
+> cap and checks in until the PR is ready. Here: 41 API calls, zero failures.
+> If our app crashes, it finds the session again. If the fix is wrong, it
+> sends Devin one correction.
 
 Back to tab 2: point at the status comment.
 
-> Status is written back where engineers already look. This one comment is
-> edited in place as the job moves: running, PR opened, validating, verified.
-> It links the Devin session, the PR at an exact commit, which APIs ran, and
-> the verdict. The same card sits on the PR for the reviewer.
+> Engineers don't need a new dashboard to follow along. This one comment on
+> the issue updates itself: working, PR opened, checking, verified. It links
+> Devin's session, the exact PR commit, and the result. The reviewer sees the
+> same card on the PR.
 
 Tab 3: PR **Files changed**. Optionally flash tab 4, the same card on the PR.
 
-> Devin touched one file, the only path this case allows. Report anchors from
-> the API can be a list, a dict, or a number; the old code crashed on all of
-> them. Now each becomes a normal validation error.
+> Devin changed one file, the only one it was allowed to. The bug: this API
+> expected text, but got a list or a number and crashed. Now it politely says
+> "that's not valid" instead.
 
 Tab 5: job page **Proof** and timeline.
 
-> The validator fetched that exact commit into a detached checkout and ran
-> our oracle against it. Baseline: regression. Candidate: pass. The candidate
-> and validated SHAs match, so the job is `VERIFIED`. Label to verified took
-> about four minutes.
+> Now the checker. It grabs that exact commit and tests it on its own. Before
+> the fix: broken. After: passes. Same commit Devin pushed, same commit we
+> tested, so it's marked verified. Label to proof took about four minutes.
 
 **2:15 to 3:30 | Why you can trust the green check.** Tab 6, oracle file.
 
-> Devin's "done" is not the signal. The oracle lives in this repo, outside
-> the checkout Devin edits, and proves it loaded the candidate's code. Controls
-> first: valid anchors must still pass. Then three bad inputs. All crash is
-> the baseline; some crash is `CONTRACT_FAILED`, so a partial fix is rejected.
+> Devin saying "done" isn't proof. Our checker lives outside Devin's reach, so
+> Devin can't grade its own homework. First it checks good inputs still work.
+> Then it throws three bad inputs at it. If only some are fixed, that's a
+> partial fix, and it's rejected.
 
 Tab 7 (`evals/cases.yaml`), then tab 8 (Contracts, readiness).
 
-> The whole system is driven by this registry. Each case pins a baseline
-> commit, the files Devin may change, and its oracle. Before any paid run,
-> `make baseline` must reproduce the bug. For weak tests we inject a known
-> regression: the old test misses it, Devin's new test must catch it. If the
-> evaluator breaks, that is `INFRA_ERROR`, never a pass. Issue #9 hit that;
-> we fixed the validator and re-checked the same commit with no new session.
+> Everything is driven by this one list of approved bugs. Each entry says
+> where the bug lives, which files Devin may touch, and which checker proves
+> it. Before we spend a cent, we confirm the bug actually reproduces. For
+> weak tests, we plant a known bug: the old test misses it, Devin's new test
+> has to catch it. And if the checker itself breaks, that's never counted as
+> a pass. That happened once, on issue #9. We fixed the checker and re-tested
+> the same commit, without paying Devin again.
 
 **3:30 to 4:20 | Why this matters to an engineering leader.** Tab 1, leader strip.
 
-> How would you know it is working? Verified over finished, not "PRs opened."
-> Time from label to independent proof. First-pass rate, so you see how often
-> Devin needs a correction; it gets at most one, in the same session. Human
-> touches per fix: one label, one review. And ACUs per verified fix, which
-> reads "Not reported": we show only provider-reported usage and never
-> estimate a cost. The same numbers export as JSON at `/report.json`.
+> So how would you know it's working? Count proven fixes, not PRs opened.
+> Watch time from label to proof. Watch how often Devin gets it right the
+> first time; it gets at most one retry. Human effort per fix: one label, one
+> review. Cost per fix only shows when Devin reports it; we never guess. And
+> it's all available as JSON for your own dashboards.
 
 **4:20 to 5:00 | When to use it.** Tab 8, When to use it.
 
-> Use it where a defect can be stated as a contract with an oracle: weak
-> tests, crash-on-bad-input bugs, scanner findings. A new case is one YAML
-> entry plus one oracle. For production: isolated runners, dashboard auth, a
-> real queue. Not for vague feature work, and it never auto-merges.
-> Devin writes the fix; the oracle proves it; a human merges.
+> Use it for bugs you can check automatically: weak tests, crashes on bad
+> input, security scanner findings. Adding a new bug type is one config entry
+> and one checker. Don't use it for fuzzy feature work, and it never merges
+> on its own. To run it in production, we'd add isolated machines, a login,
+> and a real job queue. Devin writes the fix. The checker proves it. A human
+> merges.
 
 ## Facts to keep straight
 

@@ -109,6 +109,14 @@ img { display: block; max-width: 100%; }
 .method-line p { color: var(--muted); font-size: 12px; margin-top: 5px; }
 .method-line .method-feature { border-top-color: var(--blue); }
 .method-feature strong { color: var(--blue); }
+.landing-eli5 { padding-block: 48px 8px; }
+.landing-eli5 > h2 { margin-top: 12px; max-width: 900px; font-size: 30px; line-height: 1.15; letter-spacing: -.03em; }
+.eli5-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 26px; }
+.eli5-grid article { padding: 20px 22px; border: 1px solid var(--line); border-left: 4px solid var(--blue); background: var(--white); }
+.eli5-grid h3 { margin: 8px 0 10px; font-size: 18px; line-height: 1.25; }
+.eli5-grid p, .eli5-grid li { color: var(--muted); font-size: 14px; line-height: 1.5; }
+.eli5-grid ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.eli5-grid strong { color: var(--ink); }
 .landing-close { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 80px; padding-block: 68px 12px; }
 .landing-close h2 { font-size: 50px; margin-top: 16px; line-height: 1.02; letter-spacing: -.05em; }
 .landing-close > div:last-child > p:first-child { font-size: 22px; max-width: 430px; line-height: 1.4; letter-spacing: -.02em; }
@@ -397,6 +405,8 @@ details .eyebrow { margin-top: 18px; }
   .method-line strong { font-size: 15px; }
   .method-line p { font-size: 11px; }
   .method-line span { font-size: 9px; }
+  .eli5-grid { grid-template-columns: 1fr; }
+  .landing-eli5 > h2 { font-size: 24px; }
   .landing-close { grid-template-columns: 1fr; padding-top: 42px; gap: 27px; }
   .landing-close h2 { font-size: 44px; }
   .landing-close > div:last-child > p:first-child { font-size: 20px; }
