@@ -1,6 +1,6 @@
 # Devin Remediation Platform
 
-Turn a confirmed weak test into a candidate PR, then independently verify that the repaired test detects the regression it previously missed.
+Turn a confirmed weak test or application contract into a candidate PR, then independently verify that the repair detects the regression or satisfies the pinned behavior contract.
 
 ## What it does
 
@@ -50,7 +50,7 @@ The dashboard at `/` and the download at `/report.json` are two views of the sam
 
 The portfolio labels synthetic records as `SIMULATED`, candidate artifacts as observed, and a live job as independently verified only when the persisted status is `VERIFIED` and a validated SHA exists. The simulation dashboard therefore demonstrates orchestration and recovery while keeping customer-facing language honest. `/report.json` is suitable for attaching the same evidence snapshot to a review without scraping HTML.
 
-For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). It covers what problem the platform solves, how the signed event and independent oracle fit together, why Devin is used for investigation, and the gates for a one-finding pilot. The script distinguishes deterministic simulation evidence from fields available only after a configured live run.
+For a five-minute customer walkthrough, use [`docs/demo-script.md`](docs/demo-script.md). For the exact front-to-back API, state, and operator flow, see [`docs/app-walkthrough.md`](docs/app-walkthrough.md). The script distinguishes deterministic simulation evidence from fields available only after a configured live run.
 
 ## Why Devin
 
